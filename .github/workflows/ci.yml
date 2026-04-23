@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: medspa
+          POSTGRES_PASSWORD: medspa
+          POSTGRES_DB: medspa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medspa -d medspa"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://medspa:medspa@localhost:5432/medspa
+      NODE_ENV: test
+      AWS_REGION: us-east-1
+      MOCK_BEDROCK: "1"
+      API_PROXY_TOKEN: dev-proxy-token-change-me-ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.18"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Apply schema
+        run: pnpm --filter @medspa/api run db:migrate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Eval harness (blocks merge on regression)
+        run: pnpm eval

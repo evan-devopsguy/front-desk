@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: medspa-postgres
+    environment:
+      POSTGRES_USER: medspa
+      POSTGRES_PASSWORD: medspa
+      POSTGRES_DB: medspa
+    ports:
+      - "5432:5432"
+    volumes:
+      - medspa-pg-data:/var/lib/postgresql/data
+      - ./apps/api/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medspa -d medspa"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  medspa-pg-data:

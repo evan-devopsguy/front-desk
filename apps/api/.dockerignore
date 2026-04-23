@@ -1,0 +1,10 @@
+node_modules
+dist
+.turbo
+.next
+.git
+.env*
+!.env.example
+.vscode
+coverage
+**/*.test.ts

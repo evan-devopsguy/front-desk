@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "composite": false,
+    "baseUrl": ".",
+    "paths": {
+      "@medspa/shared": ["../../packages/shared/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "../../packages/shared/src/**/*"]
+}
