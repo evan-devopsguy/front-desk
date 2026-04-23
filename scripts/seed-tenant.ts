@@ -1,12 +1,16 @@
 #!/usr/bin/env tsx
 /**
- * CLI: onboard a new spa from a public URL.
+ * CLI: onboard a new tenant from a public URL.
  *
  * Usage:
  *   pnpm db:seed -- \
- *     --name "Aurora Med Spa" \
- *     --twilio "+15555550001" \
- *     --url   "https://auroramedspa.example.com"
+ *     --vertical  garage-doors \
+ *     --name      "Fix Garage" \
+ *     --twilio    "+15555550001" \
+ *     --owner-phone "+15555550100" \
+ *     --adapter   google-calendar \
+ *     --timezone  "America/Phoenix" \
+ *     --url       "https://fixgarage.example.com"
  *
  * Steps:
  *   1. Parse args + load tenant config template.
@@ -79,40 +83,104 @@ function defaultConfig(displayName: string, ownerPhone: string): TenantConfig {
   });
 }
 
+function garageDoorsDefaultConfig(args: {
+  name: string;
+  ownerPhone: string;
+  timezone: string;
+}): TenantConfig {
+  return tenantConfigSchema.parse({
+    displayName: args.name,
+    timezone: args.timezone,
+    hours: {
+      mon: { open: "08:00", close: "18:00" },
+      tue: { open: "08:00", close: "18:00" },
+      wed: { open: "08:00", close: "18:00" },
+      thu: { open: "08:00", close: "18:00" },
+      fri: { open: "08:00", close: "18:00" },
+      sat: { open: "09:00", close: "15:00" },
+      sun: null,
+    },
+    services: [{
+      id: "service_call",
+      name: "Service call",
+      description: "Diagnosis + on-site repair, typically 60 min.",
+      durationMinutes: 60,
+      priceCents: 0,
+      providerTags: [],
+      requiresConsult: false,
+    }],
+    voice: {
+      tone: "friendly",
+      signOff: `— ${args.name}`,
+      maxSmsChars: 320,
+    },
+    escalation: {
+      ownerPhoneE164: args.ownerPhone,
+      escalateOn: ["complaint", "manual"],
+      quietHours: null,
+      slaMinutesByUrgency: { emergency: 15, complaint: 240, fyi: 1440 },
+    },
+    booking: {
+      minLeadTimeMinutes: 60,
+      maxAdvanceDays: 30,
+      defaultProviderId: null,
+    },
+    knowledgeSources: [],
+    serviceAreaZips: [],
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const name = args.name ?? "Aurora Med Spa";
+  const vertical = (args.vertical ?? "medspa") as "medspa" | "garage-doors";
+  const name = args.name ?? (vertical === "garage-doors" ? "Fix Garage" : "Aurora Med Spa");
   const twilio = args.twilio ?? "+15555550001";
-  const url = args.url;
-  const ownerPhone = args.owner ?? "+15555550100";
+  const ownerPhone = args["owner-phone"] ?? args.owner ?? "+15555550100";
+  const timezone = args.timezone ?? (vertical === "garage-doors" ? "America/Phoenix" : "America/New_York");
+  const adapter = (args.adapter ?? (vertical === "garage-doors" ? "google-calendar" : "mock")) as
+    "mock" | "boulevard" | "vagaro" | "google-calendar";
+  const secretArn = args["secret-arn"] ?? null;
+  const url = args.url ?? null;
 
-  const config = defaultConfig(name, ownerPhone);
+  // Production safety guard
+  if (process.env["NODE_ENV"] === "production") {
+    const confirm = args.confirm;
+    if (confirm !== twilio) {
+      console.error(
+        `Production safety: pass --confirm ${twilio} to confirm you intend to seed/overwrite this number.`,
+      );
+      process.exit(1);
+    }
+  }
+
+  const config = vertical === "garage-doors"
+    ? garageDoorsDefaultConfig({ name, ownerPhone, timezone })
+    : defaultConfig(name, ownerPhone);
+
   if (url) config.knowledgeSources = [url];
 
   const tenantId: string = await unscoped(async (c) => {
     const res = await c.query(
-      `INSERT INTO tenants (name, twilio_number, vertical, booking_adapter, config)
-       VALUES ($1, $2, 'medspa', 'mock', $3)
+      `INSERT INTO tenants (name, twilio_number, vertical, booking_adapter, booking_credentials_secret_arn, config)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (twilio_number) DO UPDATE SET
-         name = EXCLUDED.name, config = EXCLUDED.config
+         name = EXCLUDED.name,
+         vertical = EXCLUDED.vertical,
+         booking_adapter = EXCLUDED.booking_adapter,
+         booking_credentials_secret_arn = EXCLUDED.booking_credentials_secret_arn,
+         config = EXCLUDED.config
        RETURNING id`,
-      [name, twilio, config],
+      [name, twilio, vertical, adapter, secretArn, config],
     );
     return res.rows[0].id as string;
   });
 
-  console.log(`tenant ready: ${name} (${tenantId})`);
+  console.log(`tenant ready: ${name} [${vertical}] adapter=${adapter} (${tenantId})`);
 
   if (url) {
     console.log(`ingesting knowledge base from ${url}...`);
-    const out = await ingestUrls({
-      tenantId,
-      urls: [url],
-      actor: "seed-script",
-    });
+    const out = await ingestUrls({ tenantId, urls: [url], actor: "seed-script" });
     console.log(`  indexed ${out.chunks} chunks from ${out.urls} urls`);
-  } else {
-    console.log("no --url provided, skipping RAG ingest");
   }
 
   await closePool();
