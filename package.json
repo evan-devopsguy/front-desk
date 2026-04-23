@@ -16,6 +16,7 @@
     "test": "pnpm -r test",
     "eval": "pnpm --filter @medspa/eval run eval",
     "db:migrate": "pnpm --filter @medspa/api db:migrate",
+    "connect:google-calendar": "tsx scripts/connect-google-calendar.ts",
     "db:seed": "tsx scripts/seed-tenant.ts",
     "demo": "tsx scripts/demo-conversation.ts"
   },
