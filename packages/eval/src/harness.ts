@@ -5,9 +5,11 @@ import {
 } from "../../../apps/api/src/db/repository.js";
 import { orchestrate } from "../../../apps/api/src/agent/orchestrator.js";
 import { createBookingAdapter } from "../../../apps/api/src/integrations/booking/index.js";
-import { __resetMockBookings } from "../../../apps/api/src/integrations/booking/mock.js";
-import { hashPhone } from "../../../apps/api/src/lib/phi.js";
+import { __resetMockBookings, __listMockBookings } from "../../../apps/api/src/integrations/booking/mock.js";
+import { hashPhone } from "../../../apps/api/src/lib/pii.js";
 import type { OrchestrateOutput } from "../../../apps/api/src/agent/orchestrator.js";
+import { getVertical } from "../../../apps/api/src/verticals/index.js";
+import type { VerticalId } from "../../../apps/api/src/verticals/types.js";
 
 export interface Turn {
   patient: string;
@@ -15,7 +17,13 @@ export interface Turn {
 
 export interface Expectation {
   /** Intent the classifier must return on the first turn. */
-  intent?: "faq" | "booking" | "clinical" | "complaint" | "spam";
+  intent?:
+    | "faq"
+    | "booking"
+    | "clinical"
+    | "emergency"
+    | "complaint"
+    | "spam";
   /** Final conversation status. */
   status?: "active" | "booked" | "escalated" | "abandoned";
   /** Strings the reply MUST contain (case-insensitive). */
@@ -24,11 +32,14 @@ export interface Expectation {
   mustNotContain?: string[];
   /** Number of bookings expected in the mock adapter by the end of the run. */
   bookingsCount?: number;
+  /** If set, assert whether the notifyOwner callback was invoked this scenario. */
+  notifyOwnerFired?: boolean;
 }
 
 export interface Scenario {
   id: string;
   description: string;
+  vertical: VerticalId;   // must match the seeded tenant's vertical
   tenantId: string;
   patientPhone: string;
   turns: Turn[];
@@ -66,6 +77,16 @@ export async function runScenario(s: Scenario): Promise<ScenarioResult> {
     };
   }
 
+  if (tenant.vertical !== s.vertical) {
+    return {
+      id: s.id, pass: false,
+      failures: [`vertical mismatch: expected=${s.vertical} actual=${tenant.vertical}`],
+      replies: [], finalOutcome: null, intent: null,
+    };
+  }
+
+  let notifyOwnerCalled = false;
+
   for (const turn of s.turns) {
     const result = await withTenant(
       { tenantId: s.tenantId, actor: "eval" },
@@ -74,7 +95,7 @@ export async function runScenario(s: Scenario): Promise<ScenarioResult> {
         const convo = await findOrCreateConversation(client, {
           tenantId: s.tenantId,
           channel: "sms",
-          patientPhoneHash: phoneHash,
+          contactPhoneHash: phoneHash,
         });
         const adapter = createBookingAdapter(tenant.bookingAdapter, {
           tenantId: tenant.id,
@@ -84,10 +105,11 @@ export async function runScenario(s: Scenario): Promise<ScenarioResult> {
           client,
           tenant: { id: tenant.id, name: tenant.name, config: tenant.config },
           conversationId: convo.id,
-          patientPhoneE164: s.patientPhone,
+          contactPhoneE164: s.patientPhone,
           inboundText: turn.patient,
           bookingAdapter: adapter,
-          notifyOwner: async () => {},
+          vertical: getVertical(tenant.vertical),
+          notifyOwner: async () => { notifyOwnerCalled = true; },
         });
       },
     );
@@ -124,6 +146,23 @@ export async function runScenario(s: Scenario): Promise<ScenarioResult> {
   for (const s1 of s.expect.mustNotContain ?? []) {
     if (fullReply.includes(s1.toLowerCase())) {
       failures.push(`reply contained forbidden string: "${s1}"`);
+    }
+  }
+
+  if (s.expect.notifyOwnerFired !== undefined) {
+    if (notifyOwnerCalled !== s.expect.notifyOwnerFired) {
+      failures.push(
+        `notifyOwner: expected fired=${s.expect.notifyOwnerFired} actual=${notifyOwnerCalled}`,
+      );
+    }
+  }
+
+  if (s.expect.bookingsCount !== undefined) {
+    const bookings = __listMockBookings();
+    if (bookings.length !== s.expect.bookingsCount) {
+      failures.push(
+        `bookingsCount: expected=${s.expect.bookingsCount} actual=${bookings.length}`,
+      );
     }
   }
 

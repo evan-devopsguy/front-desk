@@ -6,10 +6,11 @@ import {
 } from "../db/repository.js";
 import { orchestrate } from "../agent/orchestrator.js";
 import { createBookingAdapter } from "../integrations/booking/index.js";
+import { getVertical } from "../verticals/index.js";
 import { sendSms } from "../integrations/twilio.js";
 import { audit } from "./audit.js";
 import { logger } from "./logger.js";
-import { hashPhone } from "./phi.js";
+import { hashPhone } from "./pii.js";
 import type { Channel } from "@medspa/shared";
 
 export interface InboundTurnInput {
@@ -36,7 +37,7 @@ export interface InboundTurnResult {
  *
  *   1. Resolve tenant by Twilio number.
  *   2. Open tenant-scoped transaction (RLS applies).
- *   3. Find/create active conversation for (tenant, patient_phone_hash).
+ *   3. Find/create active conversation for (tenant, contact_phone_hash).
  *   4. Run orchestrator.
  *   5. Send the reply SMS to the caller.
  *
@@ -60,6 +61,8 @@ export async function handleInboundTurn(
     return null;
   }
 
+  const vertical = getVertical(tenant.vertical);
+
   const result = await withTenant(
     { tenantId: tenant.id, actor: "twilio" },
     async (client) => {
@@ -67,7 +70,7 @@ export async function handleInboundTurn(
       const convo = await findOrCreateConversation(client, {
         tenantId: tenant.id,
         channel: input.channel,
-        patientPhoneHash: phoneHash,
+        contactPhoneHash: phoneHash,
       });
 
       const adapter = createBookingAdapter(tenant.bookingAdapter, {
@@ -79,16 +82,20 @@ export async function handleInboundTurn(
         client,
         tenant: { id: tenant.id, name: tenant.name, config: tenant.config },
         conversationId: convo.id,
-        patientPhoneE164: input.fromNumber,
+        contactPhoneE164: input.fromNumber,
         inboundText: input.inboundText,
         bookingAdapter: adapter,
-        notifyOwner: async (summary, reasonCode) => {
+        vertical,
+        notifyOwner: async (summary, reasonCode, preFormatted) => {
           const ownerPhone = tenant.config.escalation.ownerPhoneE164;
+          const smsBody = preFormatted
+            ? summary
+            : `[${tenant.name}] ${reasonCode.toUpperCase()}: ${summary}`;
           try {
             await sendSms({
               from: tenant.twilioNumber,
               to: ownerPhone,
-              body: `[${tenant.name}] ${reasonCode.toUpperCase()}: ${summary}`,
+              body: smsBody,
             });
           } catch (err) {
             logger.error({ err }, "owner notify failed");

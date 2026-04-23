@@ -1,8 +1,10 @@
 /**
- * PHI redaction for logs. We never emit patient names, phone numbers, emails,
- * dates of birth, or free-text medical content to stdout or external sinks.
+ * PII redaction for logs. We never emit contact names, phone numbers, emails,
+ * addresses, dates of birth, or free-text message content to stdout or
+ * external sinks. The key set covers both the medspa ("patient") and non-
+ * medical ("contact") field names so verticals share one code path.
  *
- * This is a belt-and-braces layer: the orchestrator already splits PHI into
+ * This is a belt-and-braces layer: the orchestrator already splits PII into
  * the DB (encrypted at rest) and emits only a short conversation_id handle in
  * logs. This redactor catches anything that slips through.
  */
@@ -15,20 +17,34 @@ const PATTERNS: Array<{ label: string; re: RegExp }> = [
   { label: "[PHONE]", re: /\+?\d[\d\s().-]{7,}\d/g },
 ];
 
+// snake_case entries mirror the camelCase ones for defense in depth against
+// misnamed log fields. PHI retention policy is enforced at the DB layer
+// (retention jobs), not this redactor — we only stop sensitive keys from
+// escaping to logs.
 const SENSITIVE_KEYS = new Set([
   "phone",
   "phone_number",
+  "phoneE164",
   "patientPhone",
   "patientPhoneE164",
   "patient_phone",
+  "contactPhone",
+  "contactPhoneE164",
+  "contact_phone",
+  "callbackPhone",
+  "name",
   "patientName",
   "patient_name",
+  "contactName",
+  "contact_name",
   "email",
+  "address",
+  "streetAddress",
+  "street_address",
   "dob",
-  "content",
-  "body",
-  "message",
-  "transcript",
+  "dateOfBirth",
+  "date_of_birth",
+  "ssn",
 ]);
 
 export function redactString(input: string): string {

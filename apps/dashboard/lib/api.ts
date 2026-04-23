@@ -23,6 +23,7 @@ export interface TenantSummary {
   name: string;
   twilioNumber: string;
   bookingAdapter: string;
+  vertical: string; // "medspa" | "garage-doors"
   createdAt: string;
 }
 
@@ -30,14 +31,14 @@ export interface ConversationSummary {
   id: string;
   tenantId: string;
   channel: "sms" | "voice" | "ig";
-  patientPhoneHash: string | null;
+  contactPhoneHash: string | null;
   status: "active" | "booked" | "escalated" | "abandoned";
   createdAt: string;
 }
 
 export interface MessageRecord {
   id: string;
-  role: "patient" | "assistant" | "system" | "tool";
+  role: "patient" | "contact" | "assistant" | "system" | "tool";
   content: string;
   createdAt: string;
 }
@@ -46,7 +47,7 @@ export interface BookingRecord {
   id: string;
   service: string;
   scheduledAt: string;
-  patientName: string;
+  contactName: string;
   estimatedValueCents: number | null;
   createdAt: string;
 }

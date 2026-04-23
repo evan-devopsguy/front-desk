@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { unscoped } from "../db/client.js";
 import { logger } from "./logger.js";
-import { redact } from "./phi.js";
+import { redact } from "./pii.js";
 
 export type AuditAction =
   | "phi_read"

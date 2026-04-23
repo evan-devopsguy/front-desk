@@ -6,18 +6,23 @@ import {
   updateConversationStatus,
 } from "../db/repository.js";
 import { auditWithin } from "../lib/audit.js";
-import { hashPhone } from "../lib/phi.js";
+import { hashPhone, redact } from "../lib/pii.js";
 import type {
   BookingAdapter,
   BookingAdapterError,
 } from "../integrations/booking/types.js";
 import type { TenantConfig } from "@medspa/shared";
+import type { ToolId } from "../verticals/types.js";
+import {
+  notifyOwnerInputSchema,
+  buildOwnerAlertBody,
+} from "./owner-alert.js";
 
 export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
     name: "search_knowledge",
     description:
-      "Search the spa's knowledge base (services, policies, pricing, FAQs). Use for every factual claim the patient asks about.",
+      "Search the business's knowledge base (services, policies, pricing, FAQs). Use for every factual claim callers ask about.",
     input_schema: {
       type: "object",
       properties: {
@@ -32,7 +37,7 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
     name: "check_availability",
     description:
-      "Check open appointment slots for a given service between two ISO datetimes. Use BEFORE proposing times to the patient.",
+      "Check open appointment slots for a given service between two ISO datetimes. Use BEFORE proposing times to the caller.",
     input_schema: {
       type: "object",
       properties: {
@@ -52,15 +57,23 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
     name: "create_booking",
     description:
-      "Book an appointment. ONLY call after confirming service, datetime, and patient name with the patient.",
+      "Book an appointment. ONLY call after confirming service, datetime, and contact name with the caller.",
     input_schema: {
       type: "object",
       properties: {
         service_id: { type: "string" },
         start_iso: { type: "string" },
-        patient_name: { type: "string" },
+        contact_name: { type: "string" },
+        address: {
+          type: "string",
+          description: "Service address (required for garage-doors bookings).",
+        },
+        problem_description: {
+          type: "string",
+          description: "One-sentence problem description (e.g., 'broken torsion spring').",
+        },
       },
-      required: ["service_id", "start_iso", "patient_name"],
+      required: ["service_id", "start_iso", "contact_name"],
     },
   },
   {
@@ -85,7 +98,7 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
     name: "end_conversation",
     description:
-      "End the conversation. Use when the patient says goodbye, confirmed a booking, or the thread is clearly done.",
+      "End the conversation. Use when the caller says goodbye, confirmed a booking, or the thread is clearly done.",
     input_schema: {
       type: "object",
       properties: {
@@ -97,17 +110,43 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
       required: ["outcome"],
     },
   },
+  {
+    name: "notify_owner",
+    description:
+      "Page the business owner via SMS. Use for emergencies (stuck door, safety hazard, car trapped), complaints about prior work, or informational heads-up (out-of-area caller). Always call this BEFORE end_conversation when the classifier flagged the intent as an always-escalate category.",
+    input_schema: {
+      type: "object",
+      properties: {
+        urgency: { type: "string", enum: ["emergency", "complaint", "fyi"] },
+        summary: {
+          type: "string",
+          description: "One sentence, ≤160 chars. Enough for the owner to decide how fast to call back.",
+        },
+        callbackPhone: {
+          type: "string",
+          description: "E.164 callback number for the caller.",
+        },
+        address: { type: "string", description: "Street address (required for emergency, optional otherwise)." },
+      },
+      required: ["urgency", "summary", "callbackPhone"],
+    },
+  },
 ];
+
+export function getToolDefinitions(ids: ReadonlyArray<ToolId>): AnthropicTool[] {
+  const set = new Set<string>(ids);
+  return TOOL_DEFINITIONS.filter((t) => set.has(t.name));
+}
 
 export interface ToolContext {
   client: PoolClient;
   tenantId: string;
   tenantConfig: TenantConfig;
   conversationId: string;
-  patientPhoneE164: string;
+  contactPhoneE164: string;
   bookingAdapter: BookingAdapter;
   /** Used for SMS owner notifications on escalation. */
-  notifyOwner: (summary: string, reason: string) => Promise<void>;
+  notifyOwner: (summary: string, reason: string, preFormatted?: boolean) => Promise<void>;
 }
 
 export interface ToolOutput {
@@ -133,6 +172,8 @@ export async function runTool(
       return escalate(ctx, input);
     case "end_conversation":
       return endConversation(ctx, input);
+    case "notify_owner":
+      return notifyOwnerTool(ctx, input);
     default:
       return { content: `unknown tool: ${name}`, isError: true };
   }
@@ -153,7 +194,7 @@ async function searchKnowledge(
   if (results.length === 0) {
     return {
       content:
-        "No matching knowledge found. Do not invent an answer — tell the patient you'll have a team member follow up, or escalate if appropriate.",
+        "No matching knowledge found. Do not invent an answer — tell the caller you'll have someone follow up, or escalate if appropriate.",
       isError: false,
     };
   }
@@ -185,7 +226,7 @@ async function checkAvailability(
     if (slots.length === 0) {
       return {
         content:
-          "No openings in that window. Suggest the patient try another date/time.",
+          "No openings in that window. Suggest the caller try another date/time.",
         isError: false,
       };
     }
@@ -206,35 +247,40 @@ async function createBooking(
 ): Promise<ToolOutput> {
   const serviceId = String(input.service_id ?? "");
   const startIso = String(input.start_iso ?? "");
-  const patientName = String(input.patient_name ?? "").trim();
-  if (!serviceId || !startIso || !patientName)
+  const contactName = String(input.contact_name ?? "").trim();
+  if (!serviceId || !startIso || !contactName)
     return {
-      content: "service_id, start_iso, patient_name required",
+      content: "service_id, start_iso, contact_name required",
       isError: true,
     };
   const service = ctx.tenantConfig.services.find((s) => s.id === serviceId);
   if (!service)
     return { content: `unknown service_id: ${serviceId}`, isError: true };
 
+  const address = typeof input.address === "string" ? input.address : undefined;
+  const problemDescription = typeof input.problem_description === "string" ? input.problem_description : undefined;
+
   try {
     const result = await ctx.bookingAdapter.createBooking({
       serviceId,
       start: startIso,
-      patientName,
-      patientPhoneE164: ctx.patientPhoneE164,
+      contactName,
+      contactPhoneE164: ctx.contactPhoneE164,
       providerId: ctx.tenantConfig.booking.defaultProviderId,
       notes: "",
+      address,
+      problemDescription,
     });
 
-    const phoneHash = hashPhone(ctx.patientPhoneE164, ctx.tenantId);
+    const phoneHash = hashPhone(ctx.contactPhoneE164, ctx.tenantId);
     await insertBooking(ctx.client, {
       tenantId: ctx.tenantId,
       conversationId: ctx.conversationId,
       externalBookingId: result.externalBookingId,
       service: service.name,
       scheduledAt: result.confirmedStart,
-      patientName,
-      patientPhoneHash: phoneHash,
+      contactName,
+      contactPhoneHash: phoneHash,
       estimatedValueCents: service.priceCents,
     });
     await updateConversationStatus(ctx.client, ctx.conversationId, "booked");
@@ -279,9 +325,44 @@ async function escalate(
     // already in the DB and the dashboard will surface it.
   });
   return {
-    content: `ESCALATED reason=${reason}. Acknowledge the patient warmly and tell them a team member will follow up shortly.`,
+    content: `ESCALATED reason=${reason}. Acknowledge the caller warmly and tell them a team member will follow up shortly.`,
     isError: false,
     outcome: "escalated",
+  };
+}
+
+async function notifyOwnerTool(
+  ctx: ToolContext,
+  input: Record<string, unknown>,
+): Promise<ToolOutput> {
+  const parsed = notifyOwnerInputSchema.parse(input);
+  const body = buildOwnerAlertBody({
+    tenantName: ctx.tenantConfig.displayName,
+    urgency: parsed.urgency,
+    summary: parsed.summary,
+    callbackPhone: parsed.callbackPhone,
+    address: parsed.address,
+    slaMinutes: ctx.tenantConfig.escalation.slaMinutesByUrgency?.[parsed.urgency],
+  });
+  await ctx.notifyOwner(body, parsed.urgency, true).catch(() => {});
+  await auditWithin(ctx.client, {
+    tenantId: ctx.tenantId,
+    actor: "agent",
+    action: "notify_owner",
+    resourceType: "conversation",
+    resourceId: ctx.conversationId,
+    metadata: {
+      urgency: parsed.urgency,
+      summary: redact(parsed.summary) as string,
+    },
+  });
+  if (parsed.urgency !== "fyi") {
+    await updateConversationStatus(ctx.client, ctx.conversationId, "escalated");
+  }
+  return {
+    content: `OWNER_PAGED urgency=${parsed.urgency}. Acknowledge the caller and tell them the owner will call back shortly.`,
+    isError: false,
+    outcome: parsed.urgency === "fyi" ? undefined : "escalated",
   };
 }
 

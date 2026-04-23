@@ -58,7 +58,7 @@ This document maps each HIPAA Security Rule control to how it's implemented in t
 The voice channel is **asynchronous voicemail-to-SMS**: Twilio answers the call, plays a greeting, records a voicemail (≤90s), and transcribes it. We receive the transcript via `POST /twilio/voice/transcription` and route it through the same classifier + orchestrator as inbound SMS; the agent replies by SMS to the caller's number.
 
 - **Recordings stay at Twilio.** We never download or store the audio. Twilio is under BAA (see [BAA-template.md](./BAA-template.md)). Retention follows Twilio's configured policy for the tenant's sub-account.
-- **Transcripts are PHI** and land in the `messages` table with `conversation.channel = 'voice'`. They inherit the full set of controls: RLS by `tenant_id`, DB-level audit trigger, encryption at rest, PHI redaction in all app logs via `lib/phi.ts`.
+- **Transcripts are PHI** and land in the `messages` table with `conversation.channel = 'voice'`. They inherit the full set of controls: RLS by `tenant_id`, DB-level audit trigger, encryption at rest, PHI redaction in all app logs via `lib/pii.ts`.
 - **No live voice AI.** There is no real-time STT/TTS path, no MediaStreams WebSocket. A later phase may add real-time voice; at that point this section needs to be re-scoped (STT/TTS vendor BAAs, latency SLOs, barge-in handling).
 - **Transcription failures fall back** to an SMS inviting the caller to text us. Audited as `voicemail_transcription_unusable`.
 
@@ -72,6 +72,6 @@ The voice channel is **asynchronous voicemail-to-SMS**: Twilio answers the call,
 
 - `infra/terraform/` — the whole infra, reviewable as code.
 - `apps/api/src/db/schema.sql` — RLS policies + audit triggers.
-- `apps/api/src/lib/phi.ts`, `apps/api/src/lib/audit.ts` — application-layer PHI + audit enforcement.
+- `apps/api/src/lib/pii.ts`, `apps/api/src/lib/audit.ts` — application-layer PHI + audit enforcement.
 - CloudTrail (all AWS API calls), CloudWatch Logs (app + DB), `audit_log` table (application events).
 - `packages/eval/src/scenarios.ts` — including the cross-tenant leak test that ships with every build.

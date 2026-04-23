@@ -4,6 +4,7 @@ export const intentSchema = z.enum([
   "faq",
   "booking",
   "clinical",
+  "emergency", // garage-doors vertical only; orchestrator wiring in Phase 2
   "complaint",
   "spam",
 ]);

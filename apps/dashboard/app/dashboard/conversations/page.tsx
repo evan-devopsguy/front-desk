@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listConversations, listTenants } from "../../../lib/api";
+import { labelsFor } from "../../../lib/vertical-labels";
 
 export default async function ConversationsPage({
   searchParams,
@@ -12,10 +13,12 @@ export default async function ConversationsPage({
   if (!tenant) return <p className="text-sm">No tenants yet.</p>;
 
   const conversations = await listConversations(tenant.id);
+  const labels = labelsFor(tenant.vertical);
 
   return (
     <section>
       <h1 className="text-2xl font-semibold">{tenant.name} — conversations</h1>
+      <p className="mt-1 text-sm text-ink/60">{labels.contactLabel}s · categories: {labels.categories.join(", ")}</p>
       <ul className="mt-6 divide-y divide-ink/10 rounded-lg border border-ink/10 bg-white">
         {conversations.map((c) => (
           <li key={c.id} className="px-5 py-3 text-sm">
@@ -25,7 +28,7 @@ export default async function ConversationsPage({
             >
               <div>
                 <p className="font-medium">
-                  {c.channel.toUpperCase()} · {c.patientPhoneHash?.slice(0, 8) ?? "unknown"}…
+                  {c.channel.toUpperCase()} · {c.contactPhoneHash?.slice(0, 8) ?? "unknown"}…
                 </p>
                 <p className="text-xs text-ink/60">
                   {new Date(c.createdAt).toLocaleString()}

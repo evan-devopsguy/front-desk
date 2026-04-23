@@ -15,7 +15,7 @@ import {
  * the tenant's business hours; bookings are held in a per-tenant map. The
  * store is module-global so restarts reset it — that's fine for demos.
  *
- * Idempotency key: `${tenantId}:${patientPhoneE164}:${start}`.
+ * Idempotency key: `${tenantId}:${contactPhoneE164}:${start}`.
  */
 
 type StoredBooking = {
@@ -24,7 +24,7 @@ type StoredBooking = {
   serviceId: string;
   start: string;
   providerId: string | null;
-  patientPhoneE164: string;
+  contactPhoneE164: string;
 };
 
 const bookings = new Map<string, StoredBooking>();
@@ -128,7 +128,7 @@ export class MockBookingAdapter implements BookingAdapter {
         `unknown service: ${req.serviceId}`,
       );
     }
-    const idemKey = `${this.ctx.tenantId}:${req.patientPhoneE164}:${req.start}`;
+    const idemKey = `${this.ctx.tenantId}:${req.contactPhoneE164}:${req.start}`;
     const existing = bookings.get(idemKey);
     if (existing) {
       return {
@@ -156,7 +156,7 @@ export class MockBookingAdapter implements BookingAdapter {
       serviceId: req.serviceId,
       start: req.start,
       providerId: req.providerId,
-      patientPhoneE164: req.patientPhoneE164,
+      contactPhoneE164: req.contactPhoneE164,
     };
     bookings.set(idemKey, stored);
     return {

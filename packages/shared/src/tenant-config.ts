@@ -34,6 +34,7 @@ export const serviceSchema = z.object({
 
 export const escalationRuleSchema = z.object({
   ownerPhoneE164: z.string().regex(/^\+[1-9]\d{7,14}$/),
+  ownerName: z.string().optional(),
   escalateOn: z
     .array(z.enum(["clinical", "complaint", "after-hours", "spam", "manual"]))
     .default(["clinical", "complaint", "manual"]),
@@ -44,13 +45,20 @@ export const escalationRuleSchema = z.object({
     })
     .nullable()
     .default(null),
+  slaMinutesByUrgency: z
+    .object({
+      emergency: z.number().int().positive().default(15),
+      complaint: z.number().int().positive().default(240),
+      fyi: z.number().int().positive().default(1440),
+    })
+    .optional(),
 });
 
 export const tenantConfigSchema = z.object({
   displayName: z.string(),
   timezone: z.string().default("America/New_York"),
   hours: hoursSchema,
-  services: z.array(serviceSchema).min(1),
+  services: z.array(serviceSchema).default([]),
   voice: z
     .object({
       tone: z
@@ -76,6 +84,7 @@ export const tenantConfigSchema = z.object({
       defaultProviderId: null,
     }),
   knowledgeSources: z.array(z.string().url()).default([]),
+  serviceAreaZips: z.array(z.string()).optional(),
 });
 
 export type TenantConfig = z.infer<typeof tenantConfigSchema>;

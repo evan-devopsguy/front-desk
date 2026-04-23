@@ -1,7 +1,7 @@
 import { unscoped, withTenant } from "../../../apps/api/src/db/client.js";
 import { auditWithin } from "../../../apps/api/src/lib/audit.js";
 import { tenantConfigSchema, type TenantConfig } from "@medspa/shared";
-import { TENANT_A, TENANT_B } from "./scenarios.js";
+import { TENANT_A, TENANT_B, TENANT_C } from "./scenarios.js";
 
 export const AURORA_CONFIG: TenantConfig = tenantConfigSchema.parse({
   displayName: "Aurora Med Spa",
@@ -101,6 +101,47 @@ export const RIVERBEND_CONFIG: TenantConfig = tenantConfigSchema.parse({
   knowledgeSources: [],
 });
 
+export const FIX_GARAGE_CONFIG: TenantConfig = tenantConfigSchema.parse({
+  displayName: "Fix Garage",
+  timezone: "America/Phoenix",
+  hours: {
+    mon: { open: "08:00", close: "18:00" },
+    tue: { open: "08:00", close: "18:00" },
+    wed: { open: "08:00", close: "18:00" },
+    thu: { open: "08:00", close: "18:00" },
+    fri: { open: "08:00", close: "18:00" },
+    sat: { open: "09:00", close: "15:00" },
+    sun: null,
+  },
+  services: [{
+    id: "service_call",
+    name: "Service call",
+    description: "Diagnosis + on-site repair, typically 60 min.",
+    durationMinutes: 60,
+    priceCents: 0,
+    providerTags: [],
+    requiresConsult: false,
+  }],
+  voice: {
+    tone: "friendly",
+    signOff: "— Fix Garage",
+    maxSmsChars: 320,
+  },
+  escalation: {
+    ownerPhoneE164: "+15558880100",
+    escalateOn: ["complaint", "manual"],
+    quietHours: null,
+    slaMinutesByUrgency: { emergency: 15, complaint: 240, fyi: 1440 },
+  },
+  booking: {
+    minLeadTimeMinutes: 60,
+    maxAdvanceDays: 30,
+    defaultProviderId: null,
+  },
+  knowledgeSources: [],
+  serviceAreaZips: ["85301", "85302", "85303"],
+});
+
 /**
  * Seed with the same word-hash embedding the MOCK_BEDROCK path uses, so the
  * eval's query embedding and the seeded chunk embeddings are in the same
@@ -116,22 +157,34 @@ function toPgVector(v: number[]): string {
 export async function seedEvalTenants(): Promise<void> {
   await unscoped(async (client) => {
     await client.query(
-      `INSERT INTO tenants (id, name, twilio_number, booking_adapter, config)
-       VALUES ($1, $2, $3, 'mock', $4)
+      `INSERT INTO tenants (id, name, twilio_number, vertical, booking_adapter, config)
+       VALUES ($1, $2, $3, 'medspa', 'mock', $4)
        ON CONFLICT (id) DO UPDATE
          SET name = EXCLUDED.name,
              twilio_number = EXCLUDED.twilio_number,
+             vertical = EXCLUDED.vertical,
              config = EXCLUDED.config`,
       [TENANT_A, "Aurora Med Spa", "+15555550001", AURORA_CONFIG],
     );
     await client.query(
-      `INSERT INTO tenants (id, name, twilio_number, booking_adapter, config)
-       VALUES ($1, $2, $3, 'mock', $4)
+      `INSERT INTO tenants (id, name, twilio_number, vertical, booking_adapter, config)
+       VALUES ($1, $2, $3, 'medspa', 'mock', $4)
        ON CONFLICT (id) DO UPDATE
          SET name = EXCLUDED.name,
              twilio_number = EXCLUDED.twilio_number,
+             vertical = EXCLUDED.vertical,
              config = EXCLUDED.config`,
       [TENANT_B, "Riverbend Aesthetic", "+15555550002", RIVERBEND_CONFIG],
+    );
+    await client.query(
+      `INSERT INTO tenants (id, name, twilio_number, vertical, booking_adapter, config)
+       VALUES ($1, $2, $3, 'garage-doors', 'mock', $4)
+       ON CONFLICT (id) DO UPDATE
+         SET name = EXCLUDED.name,
+             twilio_number = EXCLUDED.twilio_number,
+             vertical = EXCLUDED.vertical,
+             config = EXCLUDED.config`,
+      [TENANT_C, "Fix Garage", "+15558880001", FIX_GARAGE_CONFIG],
     );
   });
 
@@ -180,5 +233,32 @@ export async function seedEvalTenants(): Promise<void> {
         [TENANT_B, text, toPgVector(fakeEmbedding(text)), "eval://seeded"],
       );
     }
+  });
+
+  const fixGarageChunks = [
+    `Fix Garage services the 85301, 85302, and 85303 zip codes in Phoenix. Out-of-area calls are flagged to the owner.`,
+    `Broken spring repair typically runs $150–$250 for a standard residential spring. Commercial doors or specialty springs may cost more. We'd want to see it to give a firm quote.`,
+    `Garage door opener installation or replacement typically runs $200–$400 including the unit. We carry several brands.`,
+    `Fix Garage is open Monday–Friday 8am–6pm and Saturday 9am–3pm. Closed Sundays. Emergency calls are handled 24/7 by the owner.`,
+    `A typical service call takes about an hour. We diagnose and repair most issues same visit. If parts are needed, we'll quote and return.`,
+  ];
+
+  await withTenant({ tenantId: TENANT_C, actor: "seed" }, async (c) => {
+    await c.query(`DELETE FROM knowledge_chunks WHERE tenant_id = $1`, [
+      TENANT_C,
+    ]);
+    for (const text of fixGarageChunks) {
+      await c.query(
+        `INSERT INTO knowledge_chunks (tenant_id, content, embedding, source_url)
+         VALUES ($1, $2, $3::vector, $4)`,
+        [TENANT_C, text, toPgVector(fakeEmbedding(text)), "eval://seeded"],
+      );
+    }
+    await auditWithin(c, {
+      tenantId: TENANT_C,
+      actor: "seed",
+      action: "knowledge_ingested",
+      metadata: { chunks: fixGarageChunks.length },
+    });
   });
 }

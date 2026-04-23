@@ -65,7 +65,7 @@ Dashboard ─▶ /admin (Bearer token) ─────────────�
 
 ## Principles
 
-1. **No PHI in logs.** `lib/phi.ts` redacts phone, email, DOB, SSN, and every known sensitive key before pino writes anything.
+1. **No PHI in logs.** `lib/pii.ts` redacts phone, email, DOB, SSN, and every known sensitive key before pino writes anything.
 2. **Secrets in AWS Secrets Manager** in prod. `.env.example` is dev-only.
 3. **Multi-tenant from day one.** Every table has `tenant_id`; every request is transactional with RLS scoped.
 4. **Eval before deploy.** CI runs the eval harness on every PR; cross-tenant leak test is non-negotiable.
