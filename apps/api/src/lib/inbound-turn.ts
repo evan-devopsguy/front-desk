@@ -86,13 +86,16 @@ export async function handleInboundTurn(
         inboundText: input.inboundText,
         bookingAdapter: adapter,
         vertical,
-        notifyOwner: async (summary, reasonCode) => {
+        notifyOwner: async (summary, reasonCode, preFormatted) => {
           const ownerPhone = tenant.config.escalation.ownerPhoneE164;
+          const smsBody = preFormatted
+            ? summary
+            : `[${tenant.name}] ${reasonCode.toUpperCase()}: ${summary}`;
           try {
             await sendSms({
               from: tenant.twilioNumber,
               to: ownerPhone,
-              body: `[${tenant.name}] ${reasonCode.toUpperCase()}: ${summary}`,
+              body: smsBody,
             });
           } catch (err) {
             logger.error({ err }, "owner notify failed");

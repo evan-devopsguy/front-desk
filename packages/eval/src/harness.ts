@@ -5,7 +5,7 @@ import {
 } from "../../../apps/api/src/db/repository.js";
 import { orchestrate } from "../../../apps/api/src/agent/orchestrator.js";
 import { createBookingAdapter } from "../../../apps/api/src/integrations/booking/index.js";
-import { __resetMockBookings } from "../../../apps/api/src/integrations/booking/mock.js";
+import { __resetMockBookings, __listMockBookings } from "../../../apps/api/src/integrations/booking/mock.js";
 import { hashPhone } from "../../../apps/api/src/lib/pii.js";
 import type { OrchestrateOutput } from "../../../apps/api/src/agent/orchestrator.js";
 import { getVertical } from "../../../apps/api/src/verticals/index.js";
@@ -153,6 +153,15 @@ export async function runScenario(s: Scenario): Promise<ScenarioResult> {
     if (notifyOwnerCalled !== s.expect.notifyOwnerFired) {
       failures.push(
         `notifyOwner: expected fired=${s.expect.notifyOwnerFired} actual=${notifyOwnerCalled}`,
+      );
+    }
+  }
+
+  if (s.expect.bookingsCount !== undefined) {
+    const bookings = __listMockBookings();
+    if (bookings.length !== s.expect.bookingsCount) {
+      failures.push(
+        `bookingsCount: expected=${s.expect.bookingsCount} actual=${bookings.length}`,
       );
     }
   }

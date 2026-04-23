@@ -28,7 +28,7 @@ export interface OrchestrateInput {
   inboundText: string;
   bookingAdapter: BookingAdapter;
   vertical: Vertical;
-  notifyOwner: (summary: string, reason: string) => Promise<void>;
+  notifyOwner: (summary: string, reason: string, preFormatted?: boolean) => Promise<void>;
   /** Maximum tool-use iterations per turn. Caps runaway loops and cost. */
   maxIterations?: number;
 }
@@ -239,7 +239,7 @@ export async function orchestrate(
       callbackPhone: input.contactPhoneE164,
       slaMinutes: input.vertical.escalation.slaMinutesByUrgency?.[urgency],
     });
-    await input.notifyOwner(body, urgency).catch(() => {});
+    await input.notifyOwner(body, urgency, true).catch(() => {});
     await auditWithin(input.client, {
       tenantId: input.tenant.id,
       actor: "agent",

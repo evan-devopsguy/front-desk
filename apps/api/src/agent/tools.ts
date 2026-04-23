@@ -22,7 +22,7 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
     name: "search_knowledge",
     description:
-      "Search the spa's knowledge base (services, policies, pricing, FAQs). Use for every factual claim the patient asks about.",
+      "Search the business's knowledge base (services, policies, pricing, FAQs). Use for every factual claim callers ask about.",
     input_schema: {
       type: "object",
       properties: {
@@ -37,7 +37,7 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
     name: "check_availability",
     description:
-      "Check open appointment slots for a given service between two ISO datetimes. Use BEFORE proposing times to the patient.",
+      "Check open appointment slots for a given service between two ISO datetimes. Use BEFORE proposing times to the caller.",
     input_schema: {
       type: "object",
       properties: {
@@ -64,6 +64,14 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
         service_id: { type: "string" },
         start_iso: { type: "string" },
         contact_name: { type: "string" },
+        address: {
+          type: "string",
+          description: "Service address (required for garage-doors bookings).",
+        },
+        problem_description: {
+          type: "string",
+          description: "One-sentence problem description (e.g., 'broken torsion spring').",
+        },
       },
       required: ["service_id", "start_iso", "contact_name"],
     },
@@ -90,7 +98,7 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
     name: "end_conversation",
     description:
-      "End the conversation. Use when the patient says goodbye, confirmed a booking, or the thread is clearly done.",
+      "End the conversation. Use when the caller says goodbye, confirmed a booking, or the thread is clearly done.",
     input_schema: {
       type: "object",
       properties: {
@@ -138,7 +146,7 @@ export interface ToolContext {
   contactPhoneE164: string;
   bookingAdapter: BookingAdapter;
   /** Used for SMS owner notifications on escalation. */
-  notifyOwner: (summary: string, reason: string) => Promise<void>;
+  notifyOwner: (summary: string, reason: string, preFormatted?: boolean) => Promise<void>;
 }
 
 export interface ToolOutput {
@@ -186,7 +194,7 @@ async function searchKnowledge(
   if (results.length === 0) {
     return {
       content:
-        "No matching knowledge found. Do not invent an answer — tell the patient you'll have a team member follow up, or escalate if appropriate.",
+        "No matching knowledge found. Do not invent an answer — tell the caller you'll have someone follow up, or escalate if appropriate.",
       isError: false,
     };
   }
@@ -218,7 +226,7 @@ async function checkAvailability(
     if (slots.length === 0) {
       return {
         content:
-          "No openings in that window. Suggest the patient try another date/time.",
+          "No openings in that window. Suggest the caller try another date/time.",
         isError: false,
       };
     }
@@ -249,6 +257,9 @@ async function createBooking(
   if (!service)
     return { content: `unknown service_id: ${serviceId}`, isError: true };
 
+  const address = typeof input.address === "string" ? input.address : undefined;
+  const problemDescription = typeof input.problem_description === "string" ? input.problem_description : undefined;
+
   try {
     const result = await ctx.bookingAdapter.createBooking({
       serviceId,
@@ -257,6 +268,8 @@ async function createBooking(
       contactPhoneE164: ctx.contactPhoneE164,
       providerId: ctx.tenantConfig.booking.defaultProviderId,
       notes: "",
+      address,
+      problemDescription,
     });
 
     const phoneHash = hashPhone(ctx.contactPhoneE164, ctx.tenantId);
@@ -312,7 +325,7 @@ async function escalate(
     // already in the DB and the dashboard will surface it.
   });
   return {
-    content: `ESCALATED reason=${reason}. Acknowledge the patient warmly and tell them a team member will follow up shortly.`,
+    content: `ESCALATED reason=${reason}. Acknowledge the caller warmly and tell them a team member will follow up shortly.`,
     isError: false,
     outcome: "escalated",
   };
@@ -331,7 +344,7 @@ async function notifyOwnerTool(
     address: parsed.address,
     slaMinutes: ctx.tenantConfig.escalation.slaMinutesByUrgency?.[parsed.urgency],
   });
-  await ctx.notifyOwner(body, parsed.urgency).catch(() => {});
+  await ctx.notifyOwner(body, parsed.urgency, true).catch(() => {});
   await auditWithin(ctx.client, {
     tenantId: ctx.tenantId,
     actor: "agent",
