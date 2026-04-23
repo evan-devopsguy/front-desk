@@ -8,6 +8,8 @@ import { compliance } from "./compliance.js";
 export const garageDoors: Vertical = {
   id: "garage-doors",
   prompts: { system, classifier: classifierPrompt },
+  contactRole: "contact",
+  classifierFallback: "faq",
   classifier,
   escalation,
   tools,

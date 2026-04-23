@@ -251,6 +251,9 @@ function classify(t: string): string {
     return "complaint";
   if (/\b(seo|ranking|partnership|lead gen|marketing agency|seograph|outreach)\b/.test(t))
     return "spam";
+  // Garage-doors emergency: door stuck, car trapped, broken spring, safety hazard
+  if (/\b(trapped|stuck.*door|door.*stuck|broken spring|spring.*broke|won't close|won't open|can't get.*car|door.*won't|security hazard|stuck open|stuck closed)\b/.test(t))
+    return "emergency";
   // Informational mentions of "policy/hours/location" are FAQ even when the
   // user also uses the word "reschedule/cancel".
   if (/\b(policy|hour|open|closed|location|park|address|directions)\b/.test(t))

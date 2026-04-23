@@ -16,6 +16,7 @@ import {
 } from "../db/repository.js";
 import { auditWithin } from "../lib/audit.js";
 import { logger } from "../lib/logger.js";
+import { redactString } from "../lib/pii.js";
 import type { TenantConfig, Intent } from "@medspa/shared";
 import type { Vertical } from "../verticals/types.js";
 
@@ -62,7 +63,7 @@ export async function orchestrate(
   await insertMessage(input.client, {
     tenantId: input.tenant.id,
     conversationId: input.conversationId,
-    role: input.vertical.id === "garage-doors" ? "contact" : "patient",
+    role: input.vertical.contactRole,
     content: input.inboundText,
   });
 
@@ -70,7 +71,7 @@ export async function orchestrate(
   const intent = await classifyIntent({
     message: input.inboundText,
     vertical: input.vertical,
-    fallback: input.vertical.id === "medspa" ? "clinical" : "faq",
+    fallback: input.vertical.classifierFallback,
   });
   await auditWithin(input.client, {
     tenantId: input.tenant.id,
@@ -230,7 +231,7 @@ export async function orchestrate(
       "orchestrator: forcing notify_owner — agent did not call it before end_conversation",
     );
     const urgency = (intent === "emergency" ? "emergency" : "complaint") as "emergency" | "complaint";
-    const rawSummary = input.inboundText.slice(0, 160);
+    const rawSummary = redactString(input.inboundText).slice(0, 160);
     const body = buildOwnerAlertBody({
       tenantName: input.tenant.config.displayName,
       urgency,

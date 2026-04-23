@@ -30,7 +30,7 @@ export async function classifyIntent(args: {
     .trim();
 
   for (const cat of args.vertical.classifier.categories) {
-    if (text.startsWith(cat)) return cat;
+    if (text === cat) return cat;
   }
   return args.fallback;
 }

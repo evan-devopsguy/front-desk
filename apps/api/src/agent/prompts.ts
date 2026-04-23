@@ -46,7 +46,7 @@ export function buildSystemPrompt(args: {
     .replaceAll("{{maxAdvanceDays}}", String(c.booking.maxAdvanceDays))
     .replaceAll("{{services}}", services)
     .replaceAll("{{voiceTone}}", voiceToneText)
-    .replaceAll("{{signOff}}", signOffLine);
+    .replaceAll("\n{{signOff}}", signOffLine ? `\n${signOffLine}` : "");
 }
 
 export function buildClassifierPrompt(args: { vertical: Vertical }): string {

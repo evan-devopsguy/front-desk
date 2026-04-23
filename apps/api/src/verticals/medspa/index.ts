@@ -8,6 +8,8 @@ import { compliance } from "./compliance.js";
 export const medspa: Vertical = {
   id: "medspa",
   prompts: { system, classifier: classifierPrompt },
+  contactRole: "patient",
+  classifierFallback: "clinical",
   classifier,
   escalation,
   tools,

@@ -25,6 +25,10 @@ export interface Vertical {
     system: string;
     classifier: string;
   };
+  /** Role used for inbound contact messages in the messages table. */
+  contactRole: "patient" | "contact";
+  /** Fallback intent when the classifier model output is not in the vertical's categories. */
+  classifierFallback: Intent;
   classifier: { categories: ReadonlyArray<Intent> };
   escalation: {
     /** Intents that MUST trigger an escalation tool call before end_conversation. */
