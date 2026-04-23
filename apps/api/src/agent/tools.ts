@@ -340,7 +340,7 @@ async function notifyOwnerTool(
     resourceId: ctx.conversationId,
     metadata: {
       urgency: parsed.urgency,
-      summary: redact(parsed.summary),
+      summary: redact(parsed.summary) as string,
     },
   });
   if (parsed.urgency !== "fyi") {

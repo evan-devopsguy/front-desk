@@ -71,6 +71,7 @@ describe("buildOwnerAlertBody", () => {
       });
       expect(body).toContain("FYI:");
       expect(body).toContain("Caller out of service area, referred elsewhere");
+      expect(body).not.toContain("+14045550000"); // phone withheld in fyi template
     });
   });
 
