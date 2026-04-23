@@ -1,7 +1,7 @@
 # Agent development guidelines (for AI coding assistants working in this repo)
 
 ## Non-negotiables
-1. **PHI never leaves the DB in plaintext.** No PHI in logs, no PHI in errors, no PHI in cache keys. Route everything through `lib/phi.ts`.
+1. **PII never leaves the DB in plaintext.** No PII in logs, no PII in errors, no PII in cache keys. Route everything through `lib/pii.ts`.
 2. **Every table has `tenant_id`.** Every new query runs inside `withTenant()` so RLS applies. If you're writing `unscoped()`, explain why in the PR description.
 3. **Every PHI write is audited.** DB triggers cover `conversations`, `messages`, `bookings`, `knowledge_chunks`. If you add a PHI table, add the trigger in the same PR.
 4. **Clinical → escalate.** The agent does not answer medical questions. Never weaken the classifier's clinical path.

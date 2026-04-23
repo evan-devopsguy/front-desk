@@ -1,6 +1,6 @@
 import pino from "pino";
 import { getConfig } from "./config.js";
-import { redact, redactString } from "./phi.js";
+import { redact, redactString } from "./pii.js";
 
 /**
  * Lazy pino logger. Built on first access so tests and scripts that set env

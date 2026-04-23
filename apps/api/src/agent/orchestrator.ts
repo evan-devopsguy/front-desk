@@ -21,7 +21,7 @@ export interface OrchestrateInput {
   client: PoolClient;
   tenant: { id: string; name: string; config: TenantConfig };
   conversationId: string;
-  patientPhoneE164: string;
+  contactPhoneE164: string;
   inboundText: string;
   bookingAdapter: BookingAdapter;
   notifyOwner: (summary: string, reason: string) => Promise<void>;
@@ -121,7 +121,7 @@ export async function orchestrate(
     tenantId: input.tenant.id,
     tenantConfig: input.tenant.config,
     conversationId: input.conversationId,
-    patientPhoneE164: input.patientPhoneE164,
+    contactPhoneE164: input.contactPhoneE164,
     bookingAdapter: input.bookingAdapter,
     notifyOwner: input.notifyOwner,
   };

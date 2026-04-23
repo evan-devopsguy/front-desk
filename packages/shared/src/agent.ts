@@ -4,6 +4,7 @@ export const intentSchema = z.enum([
   "faq",
   "booking",
   "clinical",
+  "emergency",
   "complaint",
   "spam",
 ]);

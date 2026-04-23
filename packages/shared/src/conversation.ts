@@ -11,14 +11,19 @@ export const conversationStatusSchema = z.enum([
 ]);
 export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 
-export const messageRoleSchema = z.enum(["patient", "assistant", "system"]);
+export const messageRoleSchema = z.enum([
+  "patient",
+  "contact",
+  "assistant",
+  "system",
+]);
 export type MessageRole = z.infer<typeof messageRoleSchema>;
 
 export const conversationSchema = z.object({
   id: z.string().uuid(),
   tenantId: z.string().uuid(),
   channel: channelSchema,
-  patientPhoneHash: z.string().nullable(),
+  contactPhoneHash: z.string().nullable(),
   status: conversationStatusSchema,
   createdAt: z.string().datetime(),
 });

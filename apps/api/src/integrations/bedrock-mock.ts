@@ -94,7 +94,7 @@ export async function mockInvokeClaude(
       return toolUse("create_booking", {
         service_id: serviceId,
         start_iso: start,
-        patient_name: name,
+        contact_name: name,
       });
     }
     // Patient is still giving details (time preference, name). Acknowledge

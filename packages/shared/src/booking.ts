@@ -10,10 +10,12 @@ export type AvailabilitySlot = z.infer<typeof availabilitySlotSchema>;
 export const bookingRequestSchema = z.object({
   serviceId: z.string(),
   start: z.string().datetime(),
-  patientName: z.string().min(1),
-  patientPhoneE164: z.string().regex(/^\+[1-9]\d{7,14}$/),
+  contactName: z.string().min(1),
+  contactPhoneE164: z.string().regex(/^\+[1-9]\d{7,14}$/),
   providerId: z.string().nullable().default(null),
   notes: z.string().default(""),
+  address: z.string().optional(),
+  problemDescription: z.string().optional(),
 });
 export type BookingRequest = z.infer<typeof bookingRequestSchema>;
 

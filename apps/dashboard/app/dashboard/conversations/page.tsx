@@ -25,7 +25,7 @@ export default async function ConversationsPage({
             >
               <div>
                 <p className="font-medium">
-                  {c.channel.toUpperCase()} · {c.patientPhoneHash?.slice(0, 8) ?? "unknown"}…
+                  {c.channel.toUpperCase()} · {c.contactPhoneHash?.slice(0, 8) ?? "unknown"}…
                 </p>
                 <p className="text-xs text-ink/60">
                   {new Date(c.createdAt).toLocaleString()}

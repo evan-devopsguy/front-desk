@@ -91,8 +91,8 @@ async function main() {
 
   const tenantId: string = await unscoped(async (c) => {
     const res = await c.query(
-      `INSERT INTO tenants (name, twilio_number, booking_adapter, config)
-       VALUES ($1, $2, 'mock', $3)
+      `INSERT INTO tenants (name, twilio_number, vertical, booking_adapter, config)
+       VALUES ($1, $2, 'medspa', 'mock', $3)
        ON CONFLICT (twilio_number) DO UPDATE SET
          name = EXCLUDED.name, config = EXCLUDED.config
        RETURNING id`,

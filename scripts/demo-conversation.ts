@@ -15,7 +15,7 @@ import {
 } from "../apps/api/src/db/repository.js";
 import { orchestrate } from "../apps/api/src/agent/orchestrator.js";
 import { createBookingAdapter } from "../apps/api/src/integrations/booking/index.js";
-import { hashPhone } from "../apps/api/src/lib/phi.js";
+import { hashPhone } from "../apps/api/src/lib/pii.js";
 import { seedEvalTenants } from "../packages/eval/src/seed.js";
 import { TENANT_A } from "../packages/eval/src/scenarios.js";
 
@@ -56,7 +56,7 @@ async function main() {
         const convo = await findOrCreateConversation(client, {
           tenantId: TENANT_A,
           channel: "sms",
-          patientPhoneHash: hash,
+          contactPhoneHash: hash,
         });
         const adapter = createBookingAdapter("mock", {
           tenantId: tenant.id,
@@ -66,7 +66,7 @@ async function main() {
           client,
           tenant: { id: tenant.id, name: tenant.name, config: tenant.config },
           conversationId: convo.id,
-          patientPhoneE164: PATIENT_PHONE,
+          contactPhoneE164: PATIENT_PHONE,
           inboundText: patientText,
           bookingAdapter: adapter,
           notifyOwner: async () => {},

@@ -31,7 +31,7 @@ export default async function BookingsPage({
               <td className="px-4 py-2">
                 {new Date(b.scheduledAt).toLocaleString()}
               </td>
-              <td className="px-4 py-2">{b.patientName}</td>
+              <td className="px-4 py-2">{b.contactName}</td>
               <td className="px-4 py-2">
                 {b.estimatedValueCents
                   ? `$${(b.estimatedValueCents / 100).toFixed(0)}`

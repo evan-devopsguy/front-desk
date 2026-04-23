@@ -25,8 +25,10 @@ CREATE TABLE IF NOT EXISTS tenants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   twilio_number TEXT UNIQUE NOT NULL,
+  vertical TEXT NOT NULL
+    CHECK (vertical IN ('medspa','garage-doors')),
   booking_adapter TEXT NOT NULL DEFAULT 'mock'
-    CHECK (booking_adapter IN ('mock','boulevard','vagaro')),
+    CHECK (booking_adapter IN ('mock','boulevard','vagaro','google-calendar')),
   booking_credentials_secret_arn TEXT,
   config JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -36,20 +38,20 @@ CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   channel TEXT NOT NULL CHECK (channel IN ('sms','voice','ig')),
-  patient_phone_hash TEXT,
+  contact_phone_hash TEXT,
   status TEXT NOT NULL
     CHECK (status IN ('active','booked','escalated','abandoned')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS conversations_tenant_phone_idx
-  ON conversations (tenant_id, patient_phone_hash, created_at DESC);
+CREATE INDEX IF NOT EXISTS conversations_tenant_contact_idx
+  ON conversations (tenant_id, contact_phone_hash, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('patient','assistant','system','tool')),
+  role TEXT NOT NULL CHECK (role IN ('patient','contact','assistant','system','tool')),
   content TEXT NOT NULL,
   tool_calls JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -64,8 +66,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   external_booking_id TEXT,
   service TEXT NOT NULL,
   scheduled_at TIMESTAMPTZ NOT NULL,
-  patient_name TEXT NOT NULL,
-  patient_phone_hash TEXT NOT NULL,
+  contact_name TEXT NOT NULL,
+  contact_phone_hash TEXT NOT NULL,
   estimated_value_cents INT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

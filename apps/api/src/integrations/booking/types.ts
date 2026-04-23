@@ -13,7 +13,7 @@ export interface BookingAdapterContext {
 }
 
 export interface BookingAdapter {
-  readonly name: "mock" | "boulevard" | "vagaro";
+  readonly name: "mock" | "boulevard" | "vagaro" | "google-calendar";
 
   /**
    * List available slots for a service in [from, to]. Must return no more
@@ -28,7 +28,7 @@ export interface BookingAdapter {
   }): Promise<AvailabilitySlot[]>;
 
   /**
-   * Create a booking. Must be idempotent on (patientPhoneE164, start) so
+   * Create a booking. Must be idempotent on (contactPhoneE164, start) so
    * retries do not double-book.
    */
   createBooking(req: BookingRequest): Promise<BookingResult>;

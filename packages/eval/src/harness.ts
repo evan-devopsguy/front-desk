@@ -6,7 +6,7 @@ import {
 import { orchestrate } from "../../../apps/api/src/agent/orchestrator.js";
 import { createBookingAdapter } from "../../../apps/api/src/integrations/booking/index.js";
 import { __resetMockBookings } from "../../../apps/api/src/integrations/booking/mock.js";
-import { hashPhone } from "../../../apps/api/src/lib/phi.js";
+import { hashPhone } from "../../../apps/api/src/lib/pii.js";
 import type { OrchestrateOutput } from "../../../apps/api/src/agent/orchestrator.js";
 
 export interface Turn {
@@ -15,7 +15,13 @@ export interface Turn {
 
 export interface Expectation {
   /** Intent the classifier must return on the first turn. */
-  intent?: "faq" | "booking" | "clinical" | "complaint" | "spam";
+  intent?:
+    | "faq"
+    | "booking"
+    | "clinical"
+    | "emergency"
+    | "complaint"
+    | "spam";
   /** Final conversation status. */
   status?: "active" | "booked" | "escalated" | "abandoned";
   /** Strings the reply MUST contain (case-insensitive). */
@@ -74,7 +80,7 @@ export async function runScenario(s: Scenario): Promise<ScenarioResult> {
         const convo = await findOrCreateConversation(client, {
           tenantId: s.tenantId,
           channel: "sms",
-          patientPhoneHash: phoneHash,
+          contactPhoneHash: phoneHash,
         });
         const adapter = createBookingAdapter(tenant.bookingAdapter, {
           tenantId: tenant.id,
@@ -84,7 +90,7 @@ export async function runScenario(s: Scenario): Promise<ScenarioResult> {
           client,
           tenant: { id: tenant.id, name: tenant.name, config: tenant.config },
           conversationId: convo.id,
-          patientPhoneE164: s.patientPhone,
+          contactPhoneE164: s.patientPhone,
           inboundText: turn.patient,
           bookingAdapter: adapter,
           notifyOwner: async () => {},

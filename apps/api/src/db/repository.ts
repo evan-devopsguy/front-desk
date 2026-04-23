@@ -17,7 +17,8 @@ export interface TenantRow {
   id: string;
   name: string;
   twilioNumber: string;
-  bookingAdapter: "mock" | "boulevard" | "vagaro";
+  vertical: "medspa" | "garage-doors";
+  bookingAdapter: "mock" | "boulevard" | "vagaro" | "google-calendar";
   bookingCredentialsSecretArn: string | null;
   config: TenantConfig;
   createdAt: string;
@@ -28,6 +29,7 @@ function rowToTenant(r: Record<string, unknown>): TenantRow {
     id: r.id as string,
     name: r.name as string,
     twilioNumber: r.twilio_number as string,
+    vertical: r.vertical as TenantRow["vertical"],
     bookingAdapter: r.booking_adapter as TenantRow["bookingAdapter"],
     bookingCredentialsSecretArn: (r.booking_credentials_secret_arn as string) ?? null,
     config: tenantConfigSchema.parse(r.config),
@@ -44,7 +46,7 @@ export async function findTenantByPhone(
   // — but for MVP we simply use an unscoped lookup from the admin route and
   // then switch into the tenant context.
   const res = await client.query(
-    `SELECT id, name, twilio_number, booking_adapter,
+    `SELECT id, name, twilio_number, vertical, booking_adapter,
             booking_credentials_secret_arn, config, created_at
        FROM tenants WHERE twilio_number = $1`,
     [phoneE164],
@@ -57,7 +59,7 @@ export async function getTenant(
   id: string,
 ): Promise<TenantRow | null> {
   const res = await client.query(
-    `SELECT id, name, twilio_number, booking_adapter,
+    `SELECT id, name, twilio_number, vertical, booking_adapter,
             booking_credentials_secret_arn, config, created_at
        FROM tenants WHERE id = $1`,
     [id],
@@ -71,23 +73,31 @@ export async function insertTenant(
     id: string;
     name: string;
     twilioNumber: string;
-    bookingAdapter: "mock" | "boulevard" | "vagaro";
+    vertical: "medspa" | "garage-doors";
+    bookingAdapter: "mock" | "boulevard" | "vagaro" | "google-calendar";
     config: TenantConfig;
   },
 ): Promise<TenantRow> {
   const res = await client.query(
-    `INSERT INTO tenants (id, name, twilio_number, booking_adapter, config)
-     VALUES ($1,$2,$3,$4,$5)
-     RETURNING id, name, twilio_number, booking_adapter,
+    `INSERT INTO tenants (id, name, twilio_number, vertical, booking_adapter, config)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING id, name, twilio_number, vertical, booking_adapter,
                booking_credentials_secret_arn, config, created_at`,
-    [input.id, input.name, input.twilioNumber, input.bookingAdapter, input.config],
+    [
+      input.id,
+      input.name,
+      input.twilioNumber,
+      input.vertical,
+      input.bookingAdapter,
+      input.config,
+    ],
   );
   return rowToTenant(res.rows[0]);
 }
 
 export async function listTenants(client: PoolClient): Promise<TenantRow[]> {
   const res = await client.query(
-    `SELECT id, name, twilio_number, booking_adapter,
+    `SELECT id, name, twilio_number, vertical, booking_adapter,
             booking_credentials_secret_arn, config, created_at
        FROM tenants ORDER BY created_at DESC`,
   );
@@ -96,22 +106,22 @@ export async function listTenants(client: PoolClient): Promise<TenantRow[]> {
 
 export async function findOrCreateConversation(
   client: PoolClient,
-  input: { tenantId: string; channel: Channel; patientPhoneHash: string },
+  input: { tenantId: string; channel: Channel; contactPhoneHash: string },
 ): Promise<Conversation> {
   const existing = await client.query(
-    `SELECT id, tenant_id, channel, patient_phone_hash, status, created_at
+    `SELECT id, tenant_id, channel, contact_phone_hash, status, created_at
        FROM conversations
-      WHERE tenant_id = $1 AND patient_phone_hash = $2 AND status = 'active'
+      WHERE tenant_id = $1 AND contact_phone_hash = $2 AND status = 'active'
       ORDER BY created_at DESC LIMIT 1`,
-    [input.tenantId, input.patientPhoneHash],
+    [input.tenantId, input.contactPhoneHash],
   );
   if (existing.rows[0]) return rowToConversation(existing.rows[0]);
 
   const res = await client.query(
-    `INSERT INTO conversations (tenant_id, channel, patient_phone_hash, status)
+    `INSERT INTO conversations (tenant_id, channel, contact_phone_hash, status)
      VALUES ($1,$2,$3,'active')
-     RETURNING id, tenant_id, channel, patient_phone_hash, status, created_at`,
-    [input.tenantId, input.channel, input.patientPhoneHash],
+     RETURNING id, tenant_id, channel, contact_phone_hash, status, created_at`,
+    [input.tenantId, input.channel, input.contactPhoneHash],
   );
   return rowToConversation(res.rows[0]);
 }
@@ -121,7 +131,7 @@ function rowToConversation(r: Record<string, unknown>): Conversation {
     id: r.id as string,
     tenantId: r.tenant_id as string,
     channel: r.channel as Channel,
-    patientPhoneHash: (r.patient_phone_hash as string) ?? null,
+    contactPhoneHash: (r.contact_phone_hash as string) ?? null,
     status: r.status as ConversationStatus,
     createdAt: (r.created_at as Date).toISOString(),
   };
@@ -200,14 +210,14 @@ export async function insertBooking(
     externalBookingId: string | null;
     service: string;
     scheduledAt: string;
-    patientName: string;
-    patientPhoneHash: string;
+    contactName: string;
+    contactPhoneHash: string;
     estimatedValueCents: number | null;
   },
 ): Promise<{ id: string }> {
   const res = await client.query(
     `INSERT INTO bookings (tenant_id, conversation_id, external_booking_id,
-                           service, scheduled_at, patient_name, patient_phone_hash,
+                           service, scheduled_at, contact_name, contact_phone_hash,
                            estimated_value_cents)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      RETURNING id`,
@@ -217,8 +227,8 @@ export async function insertBooking(
       input.externalBookingId,
       input.service,
       input.scheduledAt,
-      input.patientName,
-      input.patientPhoneHash,
+      input.contactName,
+      input.contactPhoneHash,
       input.estimatedValueCents,
     ],
   );
@@ -231,7 +241,7 @@ export async function listConversations(
   limit = 50,
 ): Promise<Conversation[]> {
   const res = await client.query(
-    `SELECT id, tenant_id, channel, patient_phone_hash, status, created_at
+    `SELECT id, tenant_id, channel, contact_phone_hash, status, created_at
        FROM conversations
       WHERE tenant_id = $1
       ORDER BY created_at DESC
@@ -250,13 +260,13 @@ export async function listBookings(
     id: string;
     service: string;
     scheduledAt: string;
-    patientName: string;
+    contactName: string;
     estimatedValueCents: number | null;
     createdAt: string;
   }>
 > {
   const res = await client.query(
-    `SELECT id, service, scheduled_at, patient_name, estimated_value_cents, created_at
+    `SELECT id, service, scheduled_at, contact_name, estimated_value_cents, created_at
        FROM bookings WHERE tenant_id = $1
       ORDER BY scheduled_at DESC LIMIT $2`,
     [tenantId, limit],
@@ -265,7 +275,7 @@ export async function listBookings(
     id: r.id,
     service: r.service,
     scheduledAt: (r.scheduled_at as Date).toISOString(),
-    patientName: r.patient_name,
+    contactName: r.contact_name,
     estimatedValueCents: r.estimated_value_cents,
     createdAt: (r.created_at as Date).toISOString(),
   }));

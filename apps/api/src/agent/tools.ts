@@ -6,7 +6,7 @@ import {
   updateConversationStatus,
 } from "../db/repository.js";
 import { auditWithin } from "../lib/audit.js";
-import { hashPhone } from "../lib/phi.js";
+import { hashPhone } from "../lib/pii.js";
 import type {
   BookingAdapter,
   BookingAdapterError,
@@ -52,15 +52,15 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
     name: "create_booking",
     description:
-      "Book an appointment. ONLY call after confirming service, datetime, and patient name with the patient.",
+      "Book an appointment. ONLY call after confirming service, datetime, and contact name with the caller.",
     input_schema: {
       type: "object",
       properties: {
         service_id: { type: "string" },
         start_iso: { type: "string" },
-        patient_name: { type: "string" },
+        contact_name: { type: "string" },
       },
-      required: ["service_id", "start_iso", "patient_name"],
+      required: ["service_id", "start_iso", "contact_name"],
     },
   },
   {
@@ -104,7 +104,7 @@ export interface ToolContext {
   tenantId: string;
   tenantConfig: TenantConfig;
   conversationId: string;
-  patientPhoneE164: string;
+  contactPhoneE164: string;
   bookingAdapter: BookingAdapter;
   /** Used for SMS owner notifications on escalation. */
   notifyOwner: (summary: string, reason: string) => Promise<void>;
@@ -206,10 +206,10 @@ async function createBooking(
 ): Promise<ToolOutput> {
   const serviceId = String(input.service_id ?? "");
   const startIso = String(input.start_iso ?? "");
-  const patientName = String(input.patient_name ?? "").trim();
-  if (!serviceId || !startIso || !patientName)
+  const contactName = String(input.contact_name ?? "").trim();
+  if (!serviceId || !startIso || !contactName)
     return {
-      content: "service_id, start_iso, patient_name required",
+      content: "service_id, start_iso, contact_name required",
       isError: true,
     };
   const service = ctx.tenantConfig.services.find((s) => s.id === serviceId);
@@ -220,21 +220,21 @@ async function createBooking(
     const result = await ctx.bookingAdapter.createBooking({
       serviceId,
       start: startIso,
-      patientName,
-      patientPhoneE164: ctx.patientPhoneE164,
+      contactName,
+      contactPhoneE164: ctx.contactPhoneE164,
       providerId: ctx.tenantConfig.booking.defaultProviderId,
       notes: "",
     });
 
-    const phoneHash = hashPhone(ctx.patientPhoneE164, ctx.tenantId);
+    const phoneHash = hashPhone(ctx.contactPhoneE164, ctx.tenantId);
     await insertBooking(ctx.client, {
       tenantId: ctx.tenantId,
       conversationId: ctx.conversationId,
       externalBookingId: result.externalBookingId,
       service: service.name,
       scheduledAt: result.confirmedStart,
-      patientName,
-      patientPhoneHash: phoneHash,
+      contactName,
+      contactPhoneHash: phoneHash,
       estimatedValueCents: service.priceCents,
     });
     await updateConversationStatus(ctx.client, ctx.conversationId, "booked");

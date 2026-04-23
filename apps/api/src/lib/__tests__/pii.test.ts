@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hashPhone, redact, redactString } from "../phi.js";
+import { hashPhone, redact, redactString } from "../pii.js";
 
 describe("redactString", () => {
   it("redacts phone-like sequences", () => {

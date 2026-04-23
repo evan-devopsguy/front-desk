@@ -36,7 +36,10 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   const createTenantBody = z.object({
     name: z.string().min(1),
     twilioNumber: z.string().regex(/^\+[1-9]\d{7,14}$/),
-    bookingAdapter: z.enum(["mock", "boulevard", "vagaro"]).default("mock"),
+    vertical: z.enum(["medspa", "garage-doors"]).default("medspa"),
+    bookingAdapter: z
+      .enum(["mock", "boulevard", "vagaro", "google-calendar"])
+      .default("mock"),
     config: tenantConfigSchema,
   });
 

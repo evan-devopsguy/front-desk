@@ -116,20 +116,22 @@ function toPgVector(v: number[]): string {
 export async function seedEvalTenants(): Promise<void> {
   await unscoped(async (client) => {
     await client.query(
-      `INSERT INTO tenants (id, name, twilio_number, booking_adapter, config)
-       VALUES ($1, $2, $3, 'mock', $4)
+      `INSERT INTO tenants (id, name, twilio_number, vertical, booking_adapter, config)
+       VALUES ($1, $2, $3, 'medspa', 'mock', $4)
        ON CONFLICT (id) DO UPDATE
          SET name = EXCLUDED.name,
              twilio_number = EXCLUDED.twilio_number,
+             vertical = EXCLUDED.vertical,
              config = EXCLUDED.config`,
       [TENANT_A, "Aurora Med Spa", "+15555550001", AURORA_CONFIG],
     );
     await client.query(
-      `INSERT INTO tenants (id, name, twilio_number, booking_adapter, config)
-       VALUES ($1, $2, $3, 'mock', $4)
+      `INSERT INTO tenants (id, name, twilio_number, vertical, booking_adapter, config)
+       VALUES ($1, $2, $3, 'medspa', 'mock', $4)
        ON CONFLICT (id) DO UPDATE
          SET name = EXCLUDED.name,
              twilio_number = EXCLUDED.twilio_number,
+             vertical = EXCLUDED.vertical,
              config = EXCLUDED.config`,
       [TENANT_B, "Riverbend Aesthetic", "+15555550002", RIVERBEND_CONFIG],
     );
