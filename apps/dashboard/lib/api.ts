@@ -23,6 +23,7 @@ export interface TenantSummary {
   name: string;
   twilioNumber: string;
   bookingAdapter: string;
+  vertical: string; // "medspa" | "garage-doors"
   createdAt: string;
 }
 
