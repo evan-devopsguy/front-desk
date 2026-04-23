@@ -13,37 +13,56 @@ beforeAll(() => {
 describe("classifier (mock bedrock)", () => {
   it("routes clinical questions to clinical", async () => {
     const { classifyIntent } = await import("../classifier.js");
-    const intent = await classifyIntent(
-      "Is Botox safe during pregnancy? I'm 12 weeks.",
-    );
+    const { medspa } = await import("../../verticals/medspa/index.js");
+    const intent = await classifyIntent({
+      message: "Is Botox safe during pregnancy? I'm 12 weeks.",
+      vertical: medspa,
+      fallback: "clinical",
+    });
     expect(intent).toBe("clinical");
   });
 
   it("routes booking requests to booking", async () => {
     const { classifyIntent } = await import("../classifier.js");
-    const intent = await classifyIntent("I'd like to book a hydrafacial.");
+    const { medspa } = await import("../../verticals/medspa/index.js");
+    const intent = await classifyIntent({
+      message: "I'd like to book a hydrafacial.",
+      vertical: medspa,
+      fallback: "clinical",
+    });
     expect(intent).toBe("booking");
   });
 
   it("routes price questions to faq", async () => {
     const { classifyIntent } = await import("../classifier.js");
-    const intent = await classifyIntent("How much is a hydrafacial?");
+    const { medspa } = await import("../../verticals/medspa/index.js");
+    const intent = await classifyIntent({
+      message: "How much is a hydrafacial?",
+      vertical: medspa,
+      fallback: "clinical",
+    });
     expect(intent).toBe("faq");
   });
 
   it("routes complaints to complaint", async () => {
     const { classifyIntent } = await import("../classifier.js");
-    const intent = await classifyIntent(
-      "My cheek is really swollen and painful after my botox appointment.",
-    );
+    const { medspa } = await import("../../verticals/medspa/index.js");
+    const intent = await classifyIntent({
+      message: "My cheek is really swollen and painful after my botox appointment.",
+      vertical: medspa,
+      fallback: "clinical",
+    });
     expect(intent).toBe("complaint");
   });
 
   it("routes outreach to spam", async () => {
     const { classifyIntent } = await import("../classifier.js");
-    const intent = await classifyIntent(
-      "Hi, I'm with an SEO agency and can boost your ranking",
-    );
+    const { medspa } = await import("../../verticals/medspa/index.js");
+    const intent = await classifyIntent({
+      message: "Hi, I'm with an SEO agency and can boost your ranking",
+      vertical: medspa,
+      fallback: "clinical",
+    });
     expect(intent).toBe("spam");
   });
 });
