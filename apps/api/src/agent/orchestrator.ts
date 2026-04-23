@@ -6,7 +6,7 @@ import {
 } from "../integrations/bedrock.js";
 import { buildSystemPrompt } from "./prompts.js";
 import { classifyIntent } from "./classifier.js";
-import { TOOL_DEFINITIONS, runTool, type ToolContext } from "./tools.js";
+import { getToolDefinitions, runTool, type ToolContext } from "./tools.js";
 import type { BookingAdapter } from "../integrations/booking/types.js";
 import {
   insertMessage,
@@ -141,7 +141,14 @@ export async function orchestrate(
       modelId: reasoningModelId(),
       system,
       messages: anthropicMessages,
-      tools: TOOL_DEFINITIONS,
+      // Phase 2c: hardcoded to medspa tool set; Phase 2d replaces with vertical.tools
+      tools: getToolDefinitions([
+        "search_knowledge",
+        "check_availability",
+        "create_booking",
+        "escalate_to_human",
+        "end_conversation",
+      ]),
       maxTokens: 800,
       temperature: 0.3,
     });

@@ -6,12 +6,17 @@ import {
   updateConversationStatus,
 } from "../db/repository.js";
 import { auditWithin } from "../lib/audit.js";
-import { hashPhone } from "../lib/pii.js";
+import { hashPhone, redact } from "../lib/pii.js";
 import type {
   BookingAdapter,
   BookingAdapterError,
 } from "../integrations/booking/types.js";
 import type { TenantConfig } from "@medspa/shared";
+import type { ToolId } from "../verticals/types.js";
+import {
+  notifyOwnerInputSchema,
+  buildOwnerAlertBody,
+} from "./owner-alert.js";
 
 export const TOOL_DEFINITIONS: AnthropicTool[] = [
   {
@@ -97,7 +102,33 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
       required: ["outcome"],
     },
   },
+  {
+    name: "notify_owner",
+    description:
+      "Page the business owner via SMS. Use for emergencies (stuck door, safety hazard, car trapped), complaints about prior work, or informational heads-up (out-of-area caller). Always call this BEFORE end_conversation when the classifier flagged the intent as an always-escalate category.",
+    input_schema: {
+      type: "object",
+      properties: {
+        urgency: { type: "string", enum: ["emergency", "complaint", "fyi"] },
+        summary: {
+          type: "string",
+          description: "One sentence, ≤160 chars. Enough for the owner to decide how fast to call back.",
+        },
+        callbackPhone: {
+          type: "string",
+          description: "E.164 callback number for the caller.",
+        },
+        address: { type: "string", description: "Street address (required for emergency, optional otherwise)." },
+      },
+      required: ["urgency", "summary", "callbackPhone"],
+    },
+  },
 ];
+
+export function getToolDefinitions(ids: ReadonlyArray<ToolId>): AnthropicTool[] {
+  const set = new Set<string>(ids);
+  return TOOL_DEFINITIONS.filter((t) => set.has(t.name));
+}
 
 export interface ToolContext {
   client: PoolClient;
@@ -133,6 +164,8 @@ export async function runTool(
       return escalate(ctx, input);
     case "end_conversation":
       return endConversation(ctx, input);
+    case "notify_owner":
+      return notifyOwnerTool(ctx, input);
     default:
       return { content: `unknown tool: ${name}`, isError: true };
   }
@@ -282,6 +315,41 @@ async function escalate(
     content: `ESCALATED reason=${reason}. Acknowledge the patient warmly and tell them a team member will follow up shortly.`,
     isError: false,
     outcome: "escalated",
+  };
+}
+
+async function notifyOwnerTool(
+  ctx: ToolContext,
+  input: Record<string, unknown>,
+): Promise<ToolOutput> {
+  const parsed = notifyOwnerInputSchema.parse(input);
+  const body = buildOwnerAlertBody({
+    tenantName: ctx.tenantConfig.displayName,
+    urgency: parsed.urgency,
+    summary: parsed.summary,
+    callbackPhone: parsed.callbackPhone,
+    address: parsed.address,
+    slaMinutes: ctx.tenantConfig.escalation.slaMinutesByUrgency?.[parsed.urgency],
+  });
+  await ctx.notifyOwner(body, parsed.urgency).catch(() => {});
+  await auditWithin(ctx.client, {
+    tenantId: ctx.tenantId,
+    actor: "agent",
+    action: "notify_owner",
+    resourceType: "conversation",
+    resourceId: ctx.conversationId,
+    metadata: {
+      urgency: parsed.urgency,
+      summary: redact(parsed.summary),
+    },
+  });
+  if (parsed.urgency !== "fyi") {
+    await updateConversationStatus(ctx.client, ctx.conversationId, "escalated");
+  }
+  return {
+    content: `OWNER_PAGED urgency=${parsed.urgency}. Acknowledge the caller and tell them the owner will call back shortly.`,
+    isError: false,
+    outcome: parsed.urgency === "fyi" ? undefined : "escalated",
   };
 }
 
