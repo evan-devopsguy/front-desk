@@ -10,6 +10,17 @@ export interface GoogleCalendarCredentials {
   refresh_token: string;
 }
 
+function mapGoogleError(err: unknown): BookingAdapterError {
+  const e = err as { code?: number; message?: string };
+  if (e.code === 401 || e.code === 403) {
+    return new BookingAdapterError("auth_failed", e.message ?? "google auth failed");
+  }
+  if (e.code === 429) {
+    return new BookingAdapterError("rate_limited", e.message ?? "rate limited");
+  }
+  return new BookingAdapterError("unknown", (err as Error)?.message ?? String(err));
+}
+
 export function createGoogleCalendarAdapter(ctx: BookingAdapterContext): BookingAdapter {
   const creds = ctx.credentials as unknown as GoogleCalendarCredentials | undefined;
   if (!creds?.client_id || !creds?.client_secret || !creds?.refresh_token) {
@@ -29,28 +40,32 @@ export function createGoogleCalendarAdapter(ctx: BookingAdapterContext): Booking
       const service = ctx.tenantConfig.services.find((s) => s.id === serviceId);
       if (!service) throw new BookingAdapterError("invalid_service", serviceId);
 
-      const fb = await calendar.freebusy.query({
-        requestBody: {
-          timeMin: from,
-          timeMax: to,
-          timeZone: timezone,
-          items: [{ id: calendarId }],
-        },
-      });
+      try {
+        const fb = await calendar.freebusy.query({
+          requestBody: {
+            timeMin: from,
+            timeMax: to,
+            timeZone: timezone,
+            items: [{ id: calendarId }],
+          },
+        });
 
-      const busy = (fb.data.calendars?.[calendarId]?.busy ?? []).map((b) => ({
-        start: b.start ?? "",
-        end: b.end ?? "",
-      })).filter((b) => b.start && b.end);
+        const busy = (fb.data.calendars?.[calendarId]?.busy ?? []).map((b) => ({
+          start: b.start ?? "",
+          end: b.end ?? "",
+        })).filter((b) => b.start && b.end);
 
-      return computeOpenSlots({
-        fromIso: from,
-        toIso: to,
-        durationMinutes: service.durationMinutes,
-        busy,
-        stepMinutes: 30,
-        limit,
-      });
+        return computeOpenSlots({
+          fromIso: from,
+          toIso: to,
+          durationMinutes: service.durationMinutes,
+          busy,
+          stepMinutes: 30,
+          limit,
+        });
+      } catch (err) {
+        throw mapGoogleError(err);
+      }
     },
 
     async createBooking(req: BookingRequest): Promise<BookingResult> {
@@ -85,20 +100,17 @@ export function createGoogleCalendarAdapter(ctx: BookingAdapterContext): Booking
           serviceId: req.serviceId,
           providerId: null,
         };
-      } catch (err: unknown) {
-        const e = err as { code?: number; message?: string };
-        if (e.code === 401 || e.code === 403) {
-          throw new BookingAdapterError("auth_failed", e.message ?? "google auth failed");
-        }
-        if (e.code === 429) {
-          throw new BookingAdapterError("rate_limited", e.message ?? "rate limited");
-        }
-        throw new BookingAdapterError("unknown", e?.message ?? String(err));
+      } catch (err) {
+        throw mapGoogleError(err);
       }
     },
 
     async cancelBooking(externalBookingId: string): Promise<void> {
-      await calendar.events.delete({ calendarId, eventId: externalBookingId });
+      try {
+        await calendar.events.delete({ calendarId, eventId: externalBookingId });
+      } catch (err) {
+        throw mapGoogleError(err);
+      }
     },
   };
 }

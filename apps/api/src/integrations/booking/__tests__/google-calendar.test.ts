@@ -35,7 +35,7 @@ describe("computeOpenSlots", () => {
     expect(slots).toHaveLength(0);
   });
 
-  it("returns slots before and after a busy block", () => {
+  it("returns zero slots when 60-min appointment fully overlaps a 1h busy block", () => {
     // busy: 08:30–09:30
     const slots = computeOpenSlots({
       fromIso: BASE,
