@@ -131,7 +131,7 @@ export async function runScenario(s: Scenario): Promise<ScenarioResult> {
           ? "escalated"
           : s.expect.status === "abandoned"
             ? "abandoned"
-            : "awaiting_patient";
+            : "awaiting_contact";
     if (lastOutcome !== expectedOutcome) {
       failures.push(
         `status expected=${expectedOutcome} actual=${lastOutcome}`,

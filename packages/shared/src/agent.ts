@@ -11,7 +11,7 @@ export const intentSchema = z.enum([
 export type Intent = z.infer<typeof intentSchema>;
 
 export const agentOutcomeSchema = z.enum([
-  "awaiting_patient",
+  "awaiting_contact",
   "booked",
   "escalated",
   "abandoned",

@@ -36,7 +36,7 @@ export interface OrchestrateInput {
 export interface OrchestrateOutput {
   replyText: string;
   intent: Intent;
-  outcome: "awaiting_patient" | "booked" | "escalated" | "ended" | "abandoned";
+  outcome: "awaiting_contact" | "booked" | "escalated" | "ended" | "abandoned";
   iterations: number;
 }
 
@@ -139,7 +139,7 @@ export async function orchestrate(
   });
 
   let iterations = 0;
-  let outcome: OrchestrateOutput["outcome"] = "awaiting_patient";
+  let outcome: OrchestrateOutput["outcome"] = "awaiting_contact";
   let replyText = "";
   let notifyOwnerFired = false;
 
@@ -248,7 +248,7 @@ export async function orchestrate(
       resourceId: input.conversationId,
       metadata: { urgency, forced: true },
     });
-    if (outcome === "awaiting_patient") {
+    if (outcome === "awaiting_contact") {
       outcome = "escalated";
       await updateConversationStatus(input.client, input.conversationId, "escalated");
     }
@@ -261,7 +261,7 @@ export async function orchestrate(
       "orchestrator: no final text, emitting safe fallback",
     );
     replyText = `Thanks for your patience — let me hand this to a team member and they'll follow up shortly.`;
-    if (outcome === "awaiting_patient") outcome = "escalated";
+    if (outcome === "awaiting_contact") outcome = "escalated";
     await updateConversationStatus(
       input.client,
       input.conversationId,
