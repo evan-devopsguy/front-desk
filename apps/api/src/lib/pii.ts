@@ -17,6 +17,10 @@ const PATTERNS: Array<{ label: string; re: RegExp }> = [
   { label: "[PHONE]", re: /\+?\d[\d\s().-]{7,}\d/g },
 ];
 
+// snake_case entries mirror the camelCase ones for defense in depth against
+// misnamed log fields. PHI retention policy is enforced at the DB layer
+// (retention jobs), not this redactor — we only stop sensitive keys from
+// escaping to logs.
 const SENSITIVE_KEYS = new Set([
   "phone",
   "phone_number",
@@ -41,10 +45,6 @@ const SENSITIVE_KEYS = new Set([
   "dateOfBirth",
   "date_of_birth",
   "ssn",
-  "content",
-  "body",
-  "message",
-  "transcript",
 ]);
 
 export function redactString(input: string): string {
