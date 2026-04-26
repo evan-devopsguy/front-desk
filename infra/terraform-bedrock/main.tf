@@ -1,0 +1,39 @@
+resource "aws_iam_user" "runtime" {
+  name = "front-desk-runtime"
+  path = "/runtime/"
+}
+
+data "aws_iam_policy_document" "bedrock_invoke" {
+  statement {
+    sid    = "InvokeAnthropicAndTitanModels"
+    effect = "Allow"
+    actions = [
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream",
+    ]
+    # Cross-region inference profiles plus the foundation-model ARNs they
+    # fan out to. Bedrock requires both when calling a `us.*` profile.
+    resources = [
+      "arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-sonnet-4-5-*",
+      "arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-haiku-4-5-*",
+      "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-*",
+      "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-*",
+      "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "bedrock_invoke" {
+  name        = "front-desk-bedrock-invoke"
+  description = "InvokeModel on the 3 Bedrock models the Front Desk agent uses"
+  policy      = data.aws_iam_policy_document.bedrock_invoke.json
+}
+
+resource "aws_iam_user_policy_attachment" "runtime_bedrock" {
+  user       = aws_iam_user.runtime.name
+  policy_arn = aws_iam_policy.bedrock_invoke.arn
+}
+
+resource "aws_iam_access_key" "runtime" {
+  user = aws_iam_user.runtime.name
+}
