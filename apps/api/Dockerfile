@@ -25,6 +25,12 @@ USER medspa
 
 COPY --from=builder --chown=medspa:medspa /app/node_modules /app/node_modules
 COPY --from=builder --chown=medspa:medspa /app/packages/shared /app/packages/shared
+# pnpm workspaces symlink each workspace's deps from its own node_modules
+# into the root /app/node_modules/.pnpm virtual store. The root copy alone
+# leaves Node's resolver unable to find packages — we also need the
+# per-workspace node_modules so the symlinks exist. shared has no runtime
+# deps today, but copy it for parity if any are added later.
+COPY --from=builder --chown=medspa:medspa /app/apps/api/node_modules /app/apps/api/node_modules
 COPY --from=builder --chown=medspa:medspa /app/apps/api/dist /app/apps/api/dist
 COPY --from=builder --chown=medspa:medspa /app/apps/api/package.json /app/apps/api/package.json
 COPY --from=builder --chown=medspa:medspa /app/apps/api/src/db/schema.sql /app/apps/api/src/db/schema.sql
