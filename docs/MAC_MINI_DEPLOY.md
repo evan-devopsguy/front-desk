@@ -179,7 +179,7 @@ The runner will pull the latest `main`, build the api image, run migrations
 against the freshly-created Postgres, and bring everything up. Watch the
 job log; it should take ~3–5 minutes the first time and finish with
 "api healthy". After it succeeds, hit the Tailscale Funnel URL externally
-(e.g. from your phone on cellular): `curl https://<tailnet>.ts.net/health`
+(e.g. from your phone on cellular): `curl https://<tailnet>.ts.net/healthz`
 should return 200.
 
 **Sanity check after first build** — confirm the migrations folder really

@@ -111,7 +111,7 @@ jobs:
         if: steps.services.outputs.SERVICES != ''
         run: |
           for i in $(seq 1 60); do
-            if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+            if curl -sf http://localhost:3001/healthz > /dev/null 2>&1; then
               echo "api healthy"
               exit 0
             fi
