@@ -44,13 +44,23 @@ jobs:
         id: services
         env:
           EVENT_NAME: ${{ github.event_name }}
+          # Full push range (all commits in the push), not just the last one.
+          # github.event.before is "0000…" for branch creation / force-push;
+          # we fall back to HEAD~1 in that case.
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "SERVICES=api" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "$ZERO_SHA" ]; then
+            RANGE="$BEFORE_SHA..HEAD"
+          else
+            RANGE="HEAD~1..HEAD"
+          fi
+          CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
           if echo "$CHANGED" | grep -qE "^(apps/api|packages/shared|scripts)/|^docker-compose.prod.yml$"; then
             echo "SERVICES=api" >> "$GITHUB_OUTPUT"
           else
