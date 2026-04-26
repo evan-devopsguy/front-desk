@@ -13,7 +13,12 @@ COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/api apps/api
 
-RUN pnpm --filter @medspa/api build
+# Build shared first so its dist/index.js exists. Required at runtime:
+# Node resolves `@medspa/shared` via the workspace symlink to the package's
+# package.json, which points "main" at ./dist/index.js. Without this build
+# step, the api container crashes on first import with ERR_UNKNOWN_FILE_EXTENSION
+# trying to load index.ts.
+RUN pnpm --filter @medspa/shared build && pnpm --filter @medspa/api build
 
 # ---------- Runtime ----------
 FROM node:20.18-alpine AS runtime
