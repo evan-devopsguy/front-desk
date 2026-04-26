@@ -227,3 +227,26 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO medspa_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO medspa_app;
+
+-- ---------------------------------------------------------------------------
+-- Migration ledger
+-- ---------------------------------------------------------------------------
+-- This file represents the schema at HEAD. Forward-only migrations under
+-- migrations/ exist to bring OLD installs up to this state — they are
+-- non-idempotent (e.g. plain ADD COLUMN), and re-applying them against a
+-- fresh DB initialised from this file would fail with duplicate-column
+-- errors. Pre-populating schema_migrations marks them as already applied.
+--
+-- When you add a new migration:
+--   1. Roll its DDL into this file (so fresh installs get it on init).
+--   2. Add its ID below so fresh installs skip the runtime migrate step.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO schema_migrations (id) VALUES
+  ('001_add_vertical_column'),
+  ('002_rename_patient_to_contact'),
+  ('003_expand_booking_adapter_check'),
+  ('004_allow_contact_role')
+ON CONFLICT (id) DO NOTHING;
