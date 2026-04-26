@@ -17,7 +17,7 @@
  *   2. Insert/upsert the tenant row with a sensible config.
  *   3. Call ingestUrls to scrape → chunk → embed the site.
  *
- * The config written here is intentionally editable in the dashboard later.
+ * The config written here is editable later via direct DB update or re-seed.
  * This script is the 80% path; ONBOARDING.md describes the remaining 20%.
  */
 import { unscoped } from "../apps/api/src/db/client.js";
@@ -113,6 +113,7 @@ function garageDoorsDefaultConfig(args: {
       tone: "friendly",
       signOff: `— ${args.name}`,
       maxSmsChars: 320,
+      forwardBeforeVoicemail: { enabled: true, timeoutSeconds: 18 },
     },
     escalation: {
       ownerPhoneE164: args.ownerPhone,

@@ -9,20 +9,23 @@ import { handleInboundTurn } from "../lib/inbound-turn.js";
 import { logger } from "../lib/logger.js";
 
 /**
- * Voice pipeline — after-hours voicemail → transcription → SMS reply.
+ * Voice pipeline. One of two shapes runs per inbound call, depending on
+ * tenant config:
  *
- *   POST /twilio/voice                 TwiML: greeting + <Record> with transcribe
- *   POST /twilio/voice/transcription   Twilio posts the transcript here; we feed
- *                                      it through the same orchestrator as SMS
- *                                      and text the caller back.
+ *   A. voicemail-only (default)
+ *      POST /twilio/voice  → greeting + <Record> with transcribe
  *
- * We never answer the call live. A phone call becomes an asynchronous SMS
- * conversation: the caller leaves a short voicemail, Twilio transcribes it,
- * and the agent replies by SMS to the caller's number. This reuses 100% of
- * the SMS code path — no second orchestrator, no duplicated tools.
+ *   B. ring-owner-then-voicemail (forwardBeforeVoicemail.enabled)
+ *      POST /twilio/voice            → <Dial> owner cell with action fallback
+ *      POST /twilio/voice/no-answer  → fired only when the dial didn't
+ *                                       complete; returns voicemail TwiML
  *
- * If transcription fails (noisy line, silence, too short), we send a courteous
- * fallback SMS inviting the caller to text us instead.
+ *   Both shapes terminate at:
+ *      POST /twilio/voice/transcription  → transcript → agent → SMS reply
+ *
+ * We never answer the call live. A missed phone call becomes an asynchronous
+ * SMS conversation, reusing 100% of the SMS orchestrator — no second code
+ * path for tools or prompts.
  */
 
 const FALLBACK_SMS =
@@ -30,7 +33,7 @@ const FALLBACK_SMS =
 
 /**
  * Build the voicemail greeting. A tenant may override via config; otherwise we
- * generate a sensible default from the spa name.
+ * generate a sensible default from the business name.
  */
 export function buildGreeting(
   tenantName: string,
@@ -39,6 +42,81 @@ export function buildGreeting(
   if (override && override.trim().length > 0) return override.trim();
   return `Hi, thanks for calling ${tenantName}. We can't take your call right now, but if you leave a short message after the beep we'll text you right back.`;
 }
+
+/**
+ * TwiML: play greeting, record, kick off transcription. This is the path
+ * every call eventually reaches — either directly (voicemail-only tenants)
+ * or via the no-answer action callback (forwarding tenants).
+ */
+export function buildVoicemailTwiml(args: {
+  tenantName: string;
+  voicemailGreeting: string | null;
+  transcribeCallbackUrl: string;
+}): string {
+  const twiml = new twilio.twiml.VoiceResponse();
+  const greeting = buildGreeting(args.tenantName, args.voicemailGreeting);
+  twiml.say({ voice: "alice" }, greeting);
+  twiml.record({
+    maxLength: 90,
+    timeout: 3,
+    playBeep: true,
+    trim: "trim-silence",
+    transcribe: true,
+    transcribeCallback: args.transcribeCallbackUrl,
+  });
+  twiml.say("Thanks — we'll text you back shortly.");
+  twiml.hangup();
+  return twiml.toString();
+}
+
+/**
+ * TwiML: ring the owner's cell with callerId set to the tenant's Twilio
+ * number. Owners save that number as a contact once, so forwarded calls
+ * always ring through regardless of "silence unknown callers" filters on
+ * their phone. answerOnBridge=true means the caller hears ringing (not
+ * hold music) and the call is only billed/answered once the owner picks up.
+ */
+export function buildForwardTwiml(args: {
+  twilioNumber: string;
+  ownerPhoneE164: string;
+  timeoutSeconds: number;
+  actionUrl: string;
+}): string {
+  const twiml = new twilio.twiml.VoiceResponse();
+  const dial = twiml.dial({
+    callerId: args.twilioNumber,
+    timeout: args.timeoutSeconds,
+    action: args.actionUrl,
+    method: "POST",
+    answerOnBridge: true,
+  });
+  dial.number(args.ownerPhoneE164);
+  return twiml.toString();
+}
+
+/** TwiML: the dial completed (owner answered & hung up). Nothing more to do. */
+export function buildCompletedTwiml(): string {
+  const twiml = new twilio.twiml.VoiceResponse();
+  twiml.hangup();
+  return twiml.toString();
+}
+
+/** TwiML for numbers we've never seen (shouldn't happen in practice). */
+function buildUnknownNumberTwiml(): string {
+  const twiml = new twilio.twiml.VoiceResponse();
+  twiml.say("Sorry, this number is not in service.");
+  twiml.hangup();
+  return twiml.toString();
+}
+
+/**
+ * DialCallStatus values that mean "owner did NOT take the call". On any of
+ * these, we fall through to the voicemail flow. "completed" means the leg
+ * connected and ended normally — call is done, just hang up.
+ *
+ * Ref: https://www.twilio.com/docs/voice/twiml/dial#attributes-action
+ */
+const NO_ANSWER_STATUSES = new Set(["no-answer", "busy", "failed", "canceled"]);
 
 export const twilioVoiceRoutes: FastifyPluginAsync = async (app) => {
   app.post("/twilio/voice", async (req, reply) => {
@@ -61,7 +139,6 @@ export const twilioVoiceRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const tenant = await unscoped((c) => findTenantByPhone(c, toNumber));
-    const twiml = new twilio.twiml.VoiceResponse();
 
     if (!tenant) {
       logger.warn({ toNumber }, "inbound voice for unknown tenant number");
@@ -71,33 +148,39 @@ export const twilioVoiceRoutes: FastifyPluginAsync = async (app) => {
         action: "inbound_unknown_number",
         metadata: { to: toNumber, channel: "voice" },
       });
-      twiml.say("Sorry, this number is not in service.");
-      twiml.hangup();
       return reply
         .header("content-type", "text/xml")
         .code(200)
-        .send(twiml.toString());
+        .send(buildUnknownNumberTwiml());
     }
 
-    const greeting = buildGreeting(
-      tenant.name,
-      tenant.config.voice.voicemailGreeting ?? null,
-    );
-    const transcribeCallbackUrl = `${getConfig().PUBLIC_BASE_URL}/twilio/voice/transcription`;
+    const fwd = tenant.config.voice.forwardBeforeVoicemail;
+    if (fwd?.enabled) {
+      const actionUrl = `${getConfig().PUBLIC_BASE_URL}/twilio/voice/no-answer`;
+      const xml = buildForwardTwiml({
+        twilioNumber: tenant.twilioNumber,
+        ownerPhoneE164: tenant.config.escalation.ownerPhoneE164,
+        timeoutSeconds: fwd.timeoutSeconds,
+        actionUrl,
+      });
+      await audit({
+        tenantId: tenant.id,
+        actor: "twilio",
+        action: "voice_forwarded",
+        metadata: {
+          callSid: params.CallSid ?? null,
+          timeoutSeconds: fwd.timeoutSeconds,
+        },
+      });
+      return reply.header("content-type", "text/xml").code(200).send(xml);
+    }
 
-    twiml.say({ voice: "alice" }, greeting);
-    twiml.record({
-      maxLength: 90,
-      timeout: 3,
-      playBeep: true,
-      trim: "trim-silence",
-      transcribe: true,
-      transcribeCallback: transcribeCallbackUrl,
+    const transcribeCallbackUrl = `${getConfig().PUBLIC_BASE_URL}/twilio/voice/transcription`;
+    const xml = buildVoicemailTwiml({
+      tenantName: tenant.name,
+      voicemailGreeting: tenant.config.voice.voicemailGreeting ?? null,
+      transcribeCallbackUrl,
     });
-    // If the caller runs out <Record> without a transcription event (e.g. they
-    // hung up before anything was captured), still promise a follow-up.
-    twiml.say("Thanks — we'll text you back shortly.");
-    twiml.hangup();
 
     await audit({
       tenantId: tenant.id,
@@ -106,10 +189,71 @@ export const twilioVoiceRoutes: FastifyPluginAsync = async (app) => {
       metadata: { callSid: params.CallSid ?? null },
     });
 
-    return reply
-      .header("content-type", "text/xml")
-      .code(200)
-      .send(twiml.toString());
+    return reply.header("content-type", "text/xml").code(200).send(xml);
+  });
+
+  /**
+   * Twilio fires this when a <Dial> with action=... finishes. Request
+   * includes the ORIGINAL To/From of the inbound call plus DialCallStatus,
+   * DialCallSid, and DialCallDuration. If the owner answered, we just hang
+   * up; if not, we drop into the voicemail TwiML and the flow continues
+   * exactly as the voicemail-only path.
+   */
+  app.post("/twilio/voice/no-answer", async (req, reply) => {
+    const params = (req.body ?? {}) as Record<string, string>;
+    const fullUrl = `${getConfig().PUBLIC_BASE_URL}${req.url}`;
+    const signature = req.headers["x-twilio-signature"];
+    const ok = validateTwilioSignature({
+      signatureHeader: Array.isArray(signature) ? signature[0] : signature,
+      url: fullUrl,
+      params,
+    });
+    if (!ok) {
+      logger.warn("rejected voice no-answer: bad signature");
+      return reply.code(403).send("invalid signature");
+    }
+
+    const toNumber = params.To;
+    const dialStatus = params.DialCallStatus ?? "";
+    if (!toNumber) {
+      return reply.code(400).send("missing To");
+    }
+
+    if (!NO_ANSWER_STATUSES.has(dialStatus)) {
+      return reply
+        .header("content-type", "text/xml")
+        .code(200)
+        .send(buildCompletedTwiml());
+    }
+
+    const tenant = await unscoped((c) => findTenantByPhone(c, toNumber));
+    if (!tenant) {
+      logger.warn({ toNumber }, "no-answer callback for unknown tenant number");
+      return reply
+        .header("content-type", "text/xml")
+        .code(200)
+        .send(buildUnknownNumberTwiml());
+    }
+
+    const transcribeCallbackUrl = `${getConfig().PUBLIC_BASE_URL}/twilio/voice/transcription`;
+    const xml = buildVoicemailTwiml({
+      tenantName: tenant.name,
+      voicemailGreeting: tenant.config.voice.voicemailGreeting ?? null,
+      transcribeCallbackUrl,
+    });
+
+    await audit({
+      tenantId: tenant.id,
+      actor: "twilio",
+      action: "voicemail_started",
+      metadata: {
+        callSid: params.CallSid ?? null,
+        dialStatus,
+        afterForward: true,
+      },
+    });
+
+    return reply.header("content-type", "text/xml").code(200).send(xml);
   });
 
   /**

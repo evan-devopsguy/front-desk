@@ -1,0 +1,118 @@
+name: Deploy to Mac Mini
+
+# Push-to-main → self-hosted runner on the Mac Mini rebuilds whatever changed
+# in docker-compose.prod.yml services and recreates the containers without
+# disturbing the cloudflared tunnel. See docs/MAC_MINI_DEPLOY.md.
+#
+# Security note: every untrusted GitHub-event field is routed through the
+# job's env: block and consumed via shell variable, never interpolated
+# directly into a run: script. Only github.event.inputs.services
+# (constrained to a fixed choice list) is consumed from the event payload.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "packages/shared/**"
+      - "scripts/**"
+      - "docker-compose.prod.yml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mac-mini-front-desk
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Use a label so this workflow only runs on the runner registered for
+    # this repo, not the local-seo runner sharing the same Mac Mini.
+    runs-on: [self-hosted, front-desk]
+    defaults:
+      run:
+        working-directory: /Users/evan/Create/Code/front-desk
+    steps:
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory /Users/evan/Create/Code/front-desk
+
+      - name: Pull latest code
+        run: git pull origin main
+
+      - name: Determine whether to rebuild api
+        id: services
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "SERVICES=api" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          if echo "$CHANGED" | grep -qE "^(apps/api|packages/shared|scripts)/|^docker-compose.prod.yml$"; then
+            echo "SERVICES=api" >> "$GITHUB_OUTPUT"
+          else
+            echo "SERVICES=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure base infra is up (postgres + cloudflared)
+        run: docker compose -f docker-compose.prod.yml up -d postgres cloudflared
+
+      - name: Build changed services
+        if: steps.services.outputs.SERVICES != ''
+        env:
+          SERVICES: ${{ steps.services.outputs.SERVICES }}
+        run: |
+          echo "Building: $SERVICES"
+          docker compose -f docker-compose.prod.yml build $SERVICES
+
+      - name: Run database migrations
+        if: steps.services.outputs.SERVICES != ''
+        # Forward-only migrations applied via the freshly-built api image.
+        # migrate.ts tracks applied IDs in schema_migrations so re-runs are
+        # safe. WORKDIR in the runtime image is /app, and the compiled
+        # migrate.js lives under apps/api/dist/db/.
+        #
+        # Constraint: this step runs BEFORE the api recreate, so the OLD api
+        # container is briefly talking to the NEW schema. Safe for additive
+        # migrations (new column/table). Destructive migrations (drop/rename)
+        # require a two-phase deploy and are outside the scope of this
+        # workflow — see docs/MAC_MINI_DEPLOY.md.
+        run: |
+          docker compose -f docker-compose.prod.yml run --rm \
+            --entrypoint node api apps/api/dist/db/migrate.js
+
+      - name: Recreate changed services (without disturbing cloudflared)
+        if: steps.services.outputs.SERVICES != ''
+        env:
+          SERVICES: ${{ steps.services.outputs.SERVICES }}
+        run: |
+          docker compose -f docker-compose.prod.yml up \
+            --force-recreate --no-deps -d $SERVICES
+
+      - name: Skip — no services changed
+        if: steps.services.outputs.SERVICES == ''
+        run: echo "No service changes detected — nothing to rebuild"
+
+      - name: Wait for api to be healthy
+        if: steps.services.outputs.SERVICES != ''
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+              echo "api healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "api failed to become healthy within 5 minutes"
+          docker compose -f docker-compose.prod.yml ps
+          docker compose -f docker-compose.prod.yml logs --tail=80 api
+          exit 1
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml logs --tail=120
+
+      - name: Prune old images
+        run: docker image prune -f

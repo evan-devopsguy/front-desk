@@ -12,14 +12,25 @@ Target: new spa live and answering SMS in **under 2 hours**.
 
 ## Step 1 — Provision the Twilio number (15 min)
 
-1. Console → Phone Numbers → Buy. Choose a number in the spa's area code.
+1. Console → Phone Numbers → Buy. Choose a number in the tenant's area code.
 2. Configure **Messaging**: webhook `POST https://<api-alb>/twilio/sms` (HTTP POST, `x-www-form-urlencoded`).
-3. Configure **Voice**: webhook `POST https://<api-alb>/twilio/voice` (HTTP POST). Callers hear a greeting, leave a voicemail, Twilio transcribes it, and the agent replies by SMS to the caller's number. No separate voice setup is required — Twilio posts the transcript to `/twilio/voice/transcription` automatically.
+3. Configure **Voice**: webhook `POST https://<api-alb>/twilio/voice` (HTTP POST). The tenant's config decides what happens next (see [Voice modes](#voice-modes) below). Twilio posts the voicemail transcript to `/twilio/voice/transcription` automatically; if the tenant uses ring-owner-first mode, Twilio also posts the dial result to `/twilio/voice/no-answer`.
 4. Save the Twilio number in E.164 format.
 
-## Step 2 — Create the tenant (5 min)
+### Voice modes
 
-### Option A — CLI (preferred)
+There are two shapes a tenant's voice flow can take:
+
+| Mode | Config | Behavior |
+|---|---|---|
+| **Voicemail-only** (default) | `voice.forwardBeforeVoicemail: null` | Caller hears greeting, leaves voicemail, gets SMS reply from the agent. Best for tenants who don't want their personal phone involved. |
+| **Ring-owner-first** (garage-doors default) | `voice.forwardBeforeVoicemail: { enabled: true, timeoutSeconds: 18 }` | Caller's call rings the owner's cell (from `escalation.ownerPhoneE164`) for N seconds. If the owner picks up, it's a normal phone call. If not, the flow falls back to voicemail + SMS reply. |
+
+In ring-owner-first mode, caller ID on the forwarded leg is always the tenant's own Twilio number — **not** the original caller's number. This is deliberate: the owner saves their Twilio number as a contact once, and every forwarded call rings through regardless of any "silence unknown callers" filtering on their personal phone. **Tell the owner during onboarding: "save your Twilio number in your phone contacts."**
+
+**Known limitation:** if the owner's carrier auto-sends to voicemail before our `timeoutSeconds` expires (some carriers do this at 15–20s), Twilio sees the leg as "completed" and the call ends in the owner's personal voicemail, not ours. The default of 18s is tuned to be shorter than most US carrier VM timers but it's not bulletproof. If a tenant reports missed calls landing in their personal VM, either lower `timeoutSeconds` or add call-screening (press-1-to-accept) as a follow-up.
+
+## Step 2 — Create the tenant (5 min)
 
 ```bash
 pnpm db:seed -- \
@@ -30,15 +41,6 @@ pnpm db:seed -- \
 ```
 
 The script upserts the tenant, applies a sensible default config, and ingests the site into `knowledge_chunks` with per-tenant embeddings.
-
-### Option B — POST /admin/tenants
-
-```bash
-curl -X POST https://<api-alb>/admin/tenants \
-  -H "authorization: Bearer $API_PROXY_TOKEN" \
-  -H "content-type: application/json" \
-  --data @tenant-config.json
-```
 
 ## Step 3 — Fill in the config (30 min)
 
@@ -52,10 +54,8 @@ Defaults are usable for a demo, but each spa should confirm:
 - **Escalation rules**: which intents page the owner, quiet hours.
 - **Minimum lead time**: usually 120 minutes so the agent never proposes "right now".
 
-Apply config changes via:
-```
-PATCH /admin/tenants/{id}   (roadmap — MVP uses direct DB update or re-seed)
-```
+Apply config changes by re-running `pnpm db:seed` (it upserts on the
+twilio_number key) or with a direct `UPDATE tenants SET config = ...`.
 
 ## Step 4 — Ingest the knowledge base (10 min)
 
@@ -77,13 +77,19 @@ From your own phone, text the spa's Twilio number:
 2. `How much is a hydrafacial?` → expect price from config.
 3. `I'd like to book something for Friday.` → expect availability probing + confirmation flow.
 4. `Is Botox safe during pregnancy?` → expect clinical escalation (not a medical answer). Owner's phone should receive an SMS.
-5. Check the dashboard (`/dashboard/conversations?tenantId=...`) — you should see every turn and the classifier decision.
-6. *Call* the spa's Twilio number, leave a 10-second voicemail asking about hours — expect the greeting to play, the call to hang up, and within ~30s an SMS reply arrives on your phone based on the transcript. The conversation appears in the dashboard with `channel: voice`.
+5. Inspect the conversation directly in Postgres — every turn and the classifier decision are persisted to `messages` and `audit_log`:
+   ```sql
+   SELECT role, content, created_at FROM messages
+     WHERE tenant_id = '<id>' ORDER BY created_at DESC LIMIT 20;
+   SELECT action, metadata, at FROM audit_log
+     WHERE tenant_id = '<id>' ORDER BY at DESC LIMIT 20;
+   ```
+6. *Call* the tenant's Twilio number and leave a 10-second voicemail asking about hours — expect the greeting to play (or, in ring-owner-first mode, the owner's cell to ring for ~18s before falling through to voicemail), the call to end, and within ~30s an SMS reply arrives on your phone based on the transcript. The conversation row will show `channel: voice`.
+7. If ring-owner-first mode is enabled, *also* call and have the owner pick up — expect a normal phone call with no bot involvement, and no SMS sent to the caller. The `voice_forwarded` audit event should appear without a subsequent `voicemail_started`.
 
 ## Step 6 — Hand-off (30 min)
 
-- Walk the owner through the dashboard.
-- Show them how the escalation SMS looks and how to reply to the patient from the dashboard (roadmap) or directly.
+- Confirm the escalation SMS reaches the owner — show them what one looks like, and explain that they reply to the customer directly from their cell.
 - Confirm the escalation number is monitored 24/7 or that quiet hours are configured.
 
 ## Post-onboarding
@@ -103,3 +109,5 @@ From your own phone, text the spa's Twilio number:
 | Cross-tenant data visible | RLS disabled or API running as superuser | API must connect as `medspa_app`. Check `pg_roles`. |
 | Call rings but no greeting / hangs up | Voice webhook not configured in Twilio | Set Voice webhook to `POST /twilio/voice`. Verify `PUBLIC_BASE_URL` matches the URL Twilio calls. |
 | Voicemail left but no SMS back | Transcription failed or callback blocked | Check `audit_log` for `voicemail_transcription_unusable`. Caller should receive fallback SMS if transcription was empty. |
+| Ring-owner-first: call lands in owner's personal VM instead of ours | Carrier VM picked up before our `timeoutSeconds` expired | Lower `voice.forwardBeforeVoicemail.timeoutSeconds` (try 15), or instruct owner to extend their carrier VM delay. |
+| Ring-owner-first: forwarded call shows caller's number instead of Twilio number | TwiML builder didn't set `callerId` | Check `buildForwardTwiml` — `callerId` must equal `tenant.twilioNumber`. |

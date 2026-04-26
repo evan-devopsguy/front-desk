@@ -69,6 +69,18 @@ export const tenantConfigSchema = z.object({
       /** Optional override for the voicemail greeting. If unset, a default
        *  built from the spa's display name is used. */
       voicemailGreeting: z.string().optional(),
+      /** When set, inbound calls first ring escalation.ownerPhoneE164 for
+       *  timeoutSeconds. If no answer, we fall through to the voicemail
+       *  greeting + transcription flow. Caller ID on the forwarded leg is
+       *  always the tenant's own Twilio number so the owner can save it as
+       *  a known contact and avoid unknown-caller filtering. */
+      forwardBeforeVoicemail: z
+        .object({
+          enabled: z.boolean(),
+          timeoutSeconds: z.number().int().positive().default(18),
+        })
+        .nullable()
+        .default(null),
     })
     .default({ tone: "warm", signOff: "", maxSmsChars: 320 }),
   escalation: escalationRuleSchema,

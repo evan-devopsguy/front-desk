@@ -155,7 +155,7 @@ export async function escalate(
   });
   await ctx.notifyOwner(summary, reason).catch(() => {
     // Owner notification must not fail the tool call — the escalation row is
-    // already in the DB and the dashboard will surface it.
+    // already in the DB and is queryable from audit_log.
   });
   return {
     content: `ESCALATED reason=${reason}. Acknowledge the caller warmly and tell them a team member will follow up shortly.`,

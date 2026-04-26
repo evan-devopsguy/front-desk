@@ -1,0 +1,85 @@
+# Production compose for the single-tenant Mac Mini deployment (Cooper Family
+# Garage Doors). Distinct from docker-compose.yml (which only spins up a dev
+# Postgres). Run with:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# All multi-tenant prod traffic should go to the cloud deploy (fly.io) — this
+# file is intentionally single-purpose. See docs/MAC_MINI_DEPLOY.md.
+
+name: medspa-prod
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: medspa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medspa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: medspa
+    # Bind to loopback only — the runner needs psql access for ad-hoc work
+    # but we never expose postgres to the LAN, let alone the internet.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - medspa-pg-data:/var/lib/postgresql/data
+      # First-init only. Schema is also re-applied via the migrate runner
+      # (apps/api/dist/db/migrate.js) which is idempotent and tracks applied
+      # migrations in schema_migrations.
+      - ./apps/api/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medspa -d medspa"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - medspa-prod
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: medspa-api:local
+    container_name: medspa-api
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://medspa:${POSTGRES_PASSWORD}@postgres:5432/medspa
+      DATABASE_APP_ROLE: medspa_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://localhost:3001/health',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - medspa-prod
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: medspa-cloudflared
+    restart: unless-stopped
+    # The token encodes both the tunnel ID and the credentials; ingress rules
+    # are configured in the Cloudflare dashboard. Configure the public
+    # hostname there to route to http://api:3001.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - medspa-prod
+
+networks:
+  medspa-prod:
+    driver: bridge
+
+volumes:
+  medspa-pg-data:

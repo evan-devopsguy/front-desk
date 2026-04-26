@@ -7,6 +7,16 @@
 4. **Clinical → escalate.** The agent does not answer medical questions. Never weaken the classifier's clinical path.
 5. **No raw OpenAI, no Zapier, no n8n** in the PHI path. All LLM traffic goes through AWS Bedrock.
 
+## Working principles
+Distilled from the `andrej-karpathy-skills:karpathy-guidelines` skill — apply
+where they don't conflict with the non-negotiables above.
+
+1. **Surface assumptions before writing code.** If you're guessing at a tenant-scoping rule, an escalation trigger, or an audit requirement, say so and ask. The wrong default in this codebase silently corrupts PHI or leaks across tenants — there is no safe "best guess" for the invariants in §Non-negotiables.
+2. **Surgical changes.** Every diff line should trace to the request. Don't reformat, rename, or "improve" adjacent code. If you spot real dead code or a separate issue, mention it in the PR description — don't bundle it into the same change.
+3. **Simplicity first.** No speculative abstractions, no flag-ifying things that have one caller, no error handling for cases that can't happen. Three similar lines beat a premature helper. If you wrote 200 lines and 50 would do, rewrite.
+4. **Goal-driven, with a runnable verification.** Translate the ask into a check you can actually execute — a vitest assertion, an eval scenario, a documented smoke test. "It compiles" and "tests still pass" are not verifications of new behavior; they are the floor.
+5. **State the plan for anything beyond a one-liner.** A short numbered plan with the verification next to each step, before code, beats a sprawling diff with "made changes" as the description.
+
 ## Code conventions
 - TypeScript strict; `noUncheckedIndexedAccess` is on. Don't add `any`.
 - Files are focused — one responsibility per module. Split before a file crosses ~300 lines.

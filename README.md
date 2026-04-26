@@ -1,6 +1,6 @@
 # MedSpa AI Receptionist
 
-After-hours SMS + voicemail receptionist for medical spas. HIPAA-compliant architecture, multi-tenant from day one. Voice calls are answered by voicemail; Twilio transcribes them and the agent replies by SMS — so calls and texts share one orchestrator and one dashboard.
+After-hours SMS + voicemail receptionist for medical spas. HIPAA-compliant architecture, multi-tenant from day one. Voice calls are answered by voicemail; Twilio transcribes them and the agent replies by SMS — so calls and texts share one orchestrator.
 
 ## Quickstart
 
@@ -14,20 +14,16 @@ pnpm install
 pnpm -r build
 
 # 3. Run the API
-pnpm dev:api
+pnpm dev
 # → listens on http://localhost:3001
 
-# 4. (new terminal) Dashboard
-pnpm dev:dashboard
-# → http://localhost:3000
-
-# 5. Seed a demo tenant
+# 4. Seed a demo tenant
 pnpm db:seed -- --name "Aurora Med Spa" --twilio "+15555550001"
 
-# 6. Run a demo conversation (no real Twilio required)
+# 5. Run a demo conversation (no real Twilio required)
 pnpm demo
 
-# 7. Run the eval harness
+# 6. Run the eval harness
 pnpm eval
 ```
 
@@ -35,9 +31,8 @@ pnpm eval
 
 | Path | What |
 |------|------|
-| `apps/api` | Fastify orchestrator: Twilio webhook, agent, admin proxy. |
-| `apps/dashboard` | Next.js 15 owner dashboard (read-only proxy to the API). |
-| `packages/shared` | Zod schemas + shared types used by API, dashboard, and eval. |
+| `apps/api` | Fastify orchestrator: Twilio webhook, agent. |
+| `packages/shared` | Zod schemas + shared types used by API and eval. |
 | `packages/eval` | Scripted-conversation eval harness (runs on every PR). |
 | `infra/terraform` | AWS: VPC, Fargate, RDS (encrypted, Multi-AZ), Secrets Manager, KMS. |
 | `scripts/seed-tenant.ts` | Onboard a new spa from a URL. |
@@ -51,7 +46,7 @@ Twilio SMS ───────────▶ /twilio/sms ──────�
 Twilio Voice call ───▶ /twilio/voice (TwiML) ─▶  │
   voicemail → Twilio transcribes → POST /twilio/voice/transcription
                                                  ├─▶ orchestrator (Claude Sonnet 4.5, Bedrock)
-Dashboard ─▶ /admin (Bearer token) ──────────────┘        │
+                                                          │
                                                           ├─▶ tools: search_knowledge, check_availability,
                                                           │   create_booking, escalate_to_human, end_conversation
                                                           │
@@ -75,7 +70,7 @@ Dashboard ─▶ /admin (Bearer token) ─────────────�
 
 | Command | What |
 |---------|------|
-| `pnpm dev` | Start API + dashboard in parallel. |
+| `pnpm dev` | Start the API in watch mode. |
 | `pnpm typecheck` | All packages. |
 | `pnpm test` | Unit tests. |
 | `pnpm eval` | Scripted-conversation regression suite. |
@@ -85,7 +80,7 @@ Dashboard ─▶ /admin (Bearer token) ─────────────�
 
 ## Deploy
 
-See `infra/terraform/` for AWS. Copy `terraform.tfvars.example` to `terraform.tfvars`, fill in your ECR image URI, then `terraform apply`. The dashboard deploys to Vercel with `API_INTERNAL_URL` + `API_PROXY_TOKEN` env vars pointing at the ALB.
+See `infra/terraform/` for AWS. Copy `terraform.tfvars.example` to `terraform.tfvars`, fill in your ECR image URI, then `terraform apply`. The single-tenant Mac Mini deployment for Cooper Family Garage Doors is documented separately in [`docs/MAC_MINI_DEPLOY.md`](./docs/MAC_MINI_DEPLOY.md).
 
 ## Compliance
 

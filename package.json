@@ -7,9 +7,7 @@
     "node": ">=20.10.0"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter @medspa/api --filter @medspa/dashboard dev",
-    "dev:api": "pnpm --filter @medspa/api dev",
-    "dev:dashboard": "pnpm --filter @medspa/dashboard dev",
+    "dev": "pnpm --filter @medspa/api dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",

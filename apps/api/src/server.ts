@@ -7,7 +7,6 @@ import { closePool } from "./db/client.js";
 import { healthRoutes } from "./routes/health.js";
 import { twilioRoutes } from "./routes/twilio.js";
 import { twilioVoiceRoutes } from "./routes/twilio-voice.js";
-import { adminRoutes } from "./routes/admin.js";
 
 export async function buildServer() {
   const cfg = getConfig();
@@ -28,7 +27,6 @@ export async function buildServer() {
   await app.register(healthRoutes);
   await app.register(twilioRoutes);
   await app.register(twilioVoiceRoutes);
-  await app.register(adminRoutes);
 
   app.setErrorHandler((err, _req, reply) => {
     logger.error({ err }, "unhandled error");

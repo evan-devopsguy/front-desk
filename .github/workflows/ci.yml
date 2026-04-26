@@ -33,7 +33,6 @@ jobs:
       NODE_ENV: test
       AWS_REGION: us-east-1
       MOCK_BEDROCK: "1"
-      API_PROXY_TOKEN: dev-proxy-token-change-me-ci
 
     steps:
       - uses: actions/checkout@v4

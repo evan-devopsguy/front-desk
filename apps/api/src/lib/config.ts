@@ -26,7 +26,6 @@ const envSchema = z.object({
   PUBLIC_BASE_URL: z.string().url().default("http://localhost:3001"),
 
   SECRETS_PREFIX: z.string().default("/medspa/dev"),
-  API_PROXY_TOKEN: z.string().min(16).default("dev-proxy-token-change-me"),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

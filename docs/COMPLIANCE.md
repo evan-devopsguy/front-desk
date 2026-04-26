@@ -29,16 +29,15 @@ This document maps each HIPAA Security Rule control to how it's implemented in t
 
 | Control | Implementation |
 |---------|----------------|
-| **Access Control (§164.312(a))** | DB-level RLS using `app.tenant_id` GUC. API connects as non-superuser `medspa_app`. Dashboard has no direct DB access. Secrets via AWS Secrets Manager + IAM. |
-| **Unique User Identification** | MVP ships with a single shared dashboard login; roadmap item SEC-12 adds per-user SSO (Clerk/WorkOS). Every DB write tags `app.actor` — we can attribute writes per-user once SSO lands. |
+| **Access Control (§164.312(a))** | DB-level RLS using `app.tenant_id` GUC. API connects as non-superuser `medspa_app`. Secrets via AWS Secrets Manager + IAM. |
+| **Unique User Identification** | MVP has no operator UI; PHI access is via direct DB queries by an authenticated AWS principal. Every DB write tags `app.actor` — we can attribute writes per-user when an operator UI lands. |
 | **Emergency Access** | Break-glass IAM role with 15-minute session, alerts on use. |
-| **Automatic Logoff** | Dashboard session cookies expire after 2 hours idle (iron-session, `cookieOptions.maxAge`). |
 | **Encryption — at rest** | RDS encrypted with customer-managed KMS key (`aws_kms_key.db`), key rotation enabled. S3 (none in MVP). Secrets Manager encrypted with same key. |
 | **Encryption — in transit** | `rds.force_ssl=1` parameter. TLS 1.2+ at ALB. API↔Bedrock uses VPC Interface Endpoint (never leaves AWS backbone). Twilio webhook signature validated (`X-Twilio-Signature`). |
-| **Audit Controls (§164.312(b))** | `audit_log` table + triggers on every PHI-bearing table. Application-level `phi_read` events from dashboard reads. CloudWatch Logs retained 365 days, encrypted. |
+| **Audit Controls (§164.312(b))** | `audit_log` table + triggers on every PHI-bearing table. CloudWatch Logs retained 365 days, encrypted. |
 | **Integrity (§164.312(c))** | DB writes are transactional; RLS blocks cross-tenant mutations. Hash of patient phone persists; raw phone is never stored. |
-| **Authentication (§164.312(d))** | Dashboard: iron-session + owner credential (per-user SSO roadmap SEC-12). API admin endpoints: shared Bearer token held server-side only (not exposed to browsers). |
-| **Transmission Security (§164.312(e))** | All external traffic (Twilio, Bedrock, dashboard) TLS 1.2+. Owner-notify SMS is tenant-to-tenant only (no cross-tenant leak). |
+| **Authentication (§164.312(d))** | API has no public read endpoints; Twilio webhooks are signature-validated. PHI reads happen out-of-band via authenticated DB sessions. |
+| **Transmission Security (§164.312(e))** | All external traffic (Twilio, Bedrock) TLS 1.2+. Owner-notify SMS is tenant-to-tenant only (no cross-tenant leak). |
 
 ## Organizational Safeguards (§164.314)
 
