@@ -187,13 +187,13 @@ made it into the api image (the Dockerfile copies it explicitly because
 tsc doesn't move .sql files):
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm \
-  --entrypoint sh api -c 'ls apps/api/dist/db/migrations | head'
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm \
+  --entrypoint sh api -c 'ls apps/api/dist/apps/api/src/db/migrations | head'
 ```
 
 Should list `001_*.sql`, `002_*.sql`, etc. If it errors with "No such
 file", rebuild with `--no-cache`:
-`docker compose -f docker-compose.prod.yml build --no-cache api`.
+`docker compose --env-file .env.production -f docker-compose.prod.yml build --no-cache api`.
 
 ---
 

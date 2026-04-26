@@ -28,9 +28,12 @@ COPY --from=builder --chown=medspa:medspa /app/packages/shared /app/packages/sha
 COPY --from=builder --chown=medspa:medspa /app/apps/api/dist /app/apps/api/dist
 COPY --from=builder --chown=medspa:medspa /app/apps/api/package.json /app/apps/api/package.json
 COPY --from=builder --chown=medspa:medspa /app/apps/api/src/db/schema.sql /app/apps/api/src/db/schema.sql
-# migrate.ts resolves migrations/ relative to its compiled location
-# (dist/db/migrations/). tsc doesn't copy .sql files, so do it explicitly.
-COPY --from=builder --chown=medspa:medspa /app/apps/api/src/db/migrations /app/apps/api/dist/db/migrations
+# tsc with both apps/api/src and packages/shared/src in include → outDir
+# preserves the project-relative structure, so compiled JS lands at
+# dist/apps/api/src/... and dist/packages/shared/src/... (NOT a flat dist/).
+# migrate.ts resolves migrations/ via import.meta.url, so the SQL files
+# must sit beside the compiled migrate.js. tsc doesn't copy .sql files.
+COPY --from=builder --chown=medspa:medspa /app/apps/api/src/db/migrations /app/apps/api/dist/apps/api/src/db/migrations
 
 EXPOSE 3001
-CMD ["node", "apps/api/dist/server.js"]
+CMD ["node", "apps/api/dist/apps/api/src/server.js"]
