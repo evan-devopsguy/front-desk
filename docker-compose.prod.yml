@@ -3,8 +3,11 @@
 # Postgres). Run with:
 #   docker compose -f docker-compose.prod.yml up -d
 #
+# Public ingress is via Tailscale Funnel running on the host (NOT in a
+# container), pointed at 127.0.0.1:3001. See docs/MAC_MINI_DEPLOY.md.
+#
 # All multi-tenant prod traffic should go to the cloud deploy (fly.io) — this
-# file is intentionally single-purpose. See docs/MAC_MINI_DEPLOY.md.
+# file is intentionally single-purpose.
 
 name: medspa-prod
 
@@ -47,6 +50,10 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgres://medspa:${POSTGRES_PASSWORD}@postgres:5432/medspa
       DATABASE_APP_ROLE: medspa_app
+    # Bind to loopback only — Tailscale Funnel runs on the host and forwards
+    # public traffic here. We never expose 3001 to the LAN.
+    ports:
+      - "127.0.0.1:3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,20 +67,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    networks:
-      - medspa-prod
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: medspa-cloudflared
-    restart: unless-stopped
-    # The token encodes both the tunnel ID and the credentials; ingress rules
-    # are configured in the Cloudflare dashboard. Configure the public
-    # hostname there to route to http://api:3001.
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      api:
-        condition: service_healthy
     networks:
       - medspa-prod
 

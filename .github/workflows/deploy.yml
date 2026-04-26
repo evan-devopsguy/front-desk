@@ -1,8 +1,9 @@
 name: Deploy to Mac Mini
 
 # Push-to-main → self-hosted runner on the Mac Mini rebuilds whatever changed
-# in docker-compose.prod.yml services and recreates the containers without
-# disturbing the cloudflared tunnel. See docs/MAC_MINI_DEPLOY.md.
+# in docker-compose.prod.yml services and recreates the containers. Public
+# ingress is Tailscale Funnel running on the host (outside compose), so the
+# api recreate doesn't disturb the public URL. See docs/MAC_MINI_DEPLOY.md.
 #
 # Security note: every untrusted GitHub-event field is routed through the
 # job's env: block and consumed via shell variable, never interpolated
@@ -56,8 +57,8 @@ jobs:
             echo "SERVICES=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ensure base infra is up (postgres + cloudflared)
-        run: docker compose -f docker-compose.prod.yml up -d postgres cloudflared
+      - name: Ensure base infra is up (postgres)
+        run: docker compose -f docker-compose.prod.yml up -d postgres
 
       - name: Build changed services
         if: steps.services.outputs.SERVICES != ''
@@ -83,7 +84,7 @@ jobs:
           docker compose -f docker-compose.prod.yml run --rm \
             --entrypoint node api apps/api/dist/db/migrate.js
 
-      - name: Recreate changed services (without disturbing cloudflared)
+      - name: Recreate changed services
         if: steps.services.outputs.SERVICES != ''
         env:
           SERVICES: ${{ steps.services.outputs.SERVICES }}

@@ -18,10 +18,12 @@ instance.** When customer #2 needs onboarding, deploy them to fly.io instead.
 ## Prerequisites
 
 - A Mac Mini running macOS 14+ on a wired network behind a UPS.
-- A Cloudflare account with a domain you control (used to point a hostname
-  at the cloudflared tunnel — ~$10/yr if you don't already own one).
+- A Tailscale account (free) — public ingress runs through Tailscale Funnel
+  on the host, no domain registration needed. The Mini gets a stable
+  `*.<tailnet>.ts.net` HTTPS URL.
 - An IAM user in your AWS account with **only** `bedrock:InvokeModel` on the
-  three model IDs in `.env.production.example`. Save its access key + secret.
+  three model IDs in `.env.production.example`. The Terraform module at
+  `infra/terraform-bedrock/` provisions it; outputs the access key + secret.
 - Twilio Account SID + Auth Token (already pasted into `.env`; same values
   go into `.env.production`).
 - An existing checkout of `front-desk` at `/Users/evan/Create/Code/front-desk`
@@ -105,25 +107,47 @@ and the deploy workflow uses a label (`front-desk`) to target the right one.
 
 ---
 
-## Step 4 — Set up the Cloudflare Tunnel
+## Step 4 — Set up Tailscale Funnel
 
-We use Cloudflare Tunnel instead of port-forwarding because: (a) it gives
-you a stable HTTPS URL on a real domain, (b) it hides your home IP, (c) it
-survives ISP IP changes, (d) it's free.
+We use Tailscale Funnel instead of port-forwarding because: (a) it gives
+you a stable HTTPS URL with a managed cert, (b) no inbound ports opened
+on the home network, (c) it survives ISP IP changes, (d) it's free with
+no domain registration. Tailscale runs on the host (NOT in a container)
+and forwards public traffic to `127.0.0.1:3001`, which `docker-compose.prod.yml`
+publishes from the api container.
 
-1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel**.
-2. Choose **Cloudflared**, give it a name like `cooper-family-prod`.
-3. Copy the **token** Cloudflare shows you — this is what goes into
-   `.env.production` as `CLOUDFLARE_TUNNEL_TOKEN`. (The `cloudflared`
-   container in `docker-compose.prod.yml` uses it to connect; no separate
-   install on the host.)
-4. **Public Hostname** tab → add a hostname:
-   - Subdomain: `api`
-   - Domain: your domain (e.g. `cooperfamily.example.com`)
-   - Service type: `HTTP`
-   - URL: `api:3001`  ← service name on the compose network, NOT localhost
-5. Save. The hostname is now `https://api.cooperfamily.example.com` and
-   that's what goes into `PUBLIC_BASE_URL` in `.env.production`.
+1. **Sign up at https://tailscale.com** (free personal plan).
+2. **Install Tailscale on the Mac Mini.** Easiest path is the GUI app:
+   ```bash
+   brew install --cask tailscale
+   open -a Tailscale
+   ```
+   Click "Log in" in the menu-bar icon (VNC into the Mini if needed) and
+   complete browser auth. Confirm with `tailscale status` in a terminal.
+3. **Note the device's MagicDNS hostname.** Run `tailscale status --json |
+   python3 -c "import sys,json; print(json.load(sys.stdin)['Self']['DNSName'])"`.
+   You'll get something like `mac-mini.tail1234.ts.net.` — this is your
+   public hostname (drop the trailing dot).
+4. **Enable HTTPS + Funnel for your tailnet** (one-time, in admin console):
+   - https://login.tailscale.com/admin/dns → enable **MagicDNS** + **HTTPS Certificates**.
+   - https://login.tailscale.com/admin/acls → add a `nodeAttrs` rule granting
+     `funnel` to the Mini. Minimal config:
+     ```json
+     {
+       "nodeAttrs": [
+         {"target": ["tag:funnel"], "attr": ["funnel"]}
+       ],
+       "tagOwners": {"tag:funnel": ["autogroup:admin"]}
+     }
+     ```
+     Then tag the Mini: `sudo tailscale up --advertise-tags=tag:funnel`.
+5. **Start Funnel forwarding `:443` → `127.0.0.1:3001`:**
+   ```bash
+   sudo tailscale funnel --bg 3001
+   ```
+   `--bg` makes it persist across reboots. Verify with `tailscale funnel status`.
+6. The hostname is now `https://mac-mini.tail1234.ts.net` (use yours from
+   step 3) and that's what goes into `PUBLIC_BASE_URL` in `.env.production`.
 
 
 ---
@@ -139,7 +163,7 @@ $EDITOR .env.production
 ```
 
 There are no operator-facing services in this deployment — only the API,
-Postgres, and the cloudflared tunnel. PHI inspection happens via direct
+Postgres, and host-level Tailscale. PHI inspection happens via direct
 psql queries (see Day-2 ops below).
 
 ---
@@ -151,11 +175,12 @@ From the Mini, kick the deploy workflow manually:
 1. GitHub → repo → **Actions → Deploy to Mac Mini → Run workflow**.
 2. Leave services as `all`. Run.
 
-The runner will pull the latest `main`, build both images, run migrations
+The runner will pull the latest `main`, build the api image, run migrations
 against the freshly-created Postgres, and bring everything up. Watch the
 job log; it should take ~3–5 minutes the first time and finish with
-"All services healthy". The cloudflared container will show as
-**Healthy → Connected** in Cloudflare's tunnel dashboard.
+"api healthy". After it succeeds, hit the Tailscale Funnel URL externally
+(e.g. from your phone on cellular): `curl https://<tailnet>.ts.net/health`
+should return 200.
 
 **Sanity check after first build** — confirm the migrations folder really
 made it into the api image (the Dockerfile copies it explicitly because
@@ -276,7 +301,8 @@ Not built yet. Recommended setup:
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Deploy job fails on "Run database migrations" | Old image cached without the migrations COPY in the Dockerfile | `docker compose -f docker-compose.prod.yml build --no-cache api` then re-run |
-| Twilio reports 403 from /twilio/* | `PUBLIC_BASE_URL` mismatch with the cloudflared hostname | Make them byte-identical (no trailing slash, exact subdomain) |
+| Twilio reports 403 from /twilio/* | `PUBLIC_BASE_URL` mismatch with the Tailscale Funnel URL | Make them byte-identical (no trailing slash, exact hostname) |
 | API container restart loop | Default dev secrets still in `.env.production` | Look for `Refusing to start` in `docker logs medspa-api` |
-| Cloudflare tunnel offline | Token rotated or expired | Generate new token, update `.env.production`, `docker compose ... up -d cloudflared` |
+| Tailscale Funnel returns 502 | api container not listening on `127.0.0.1:3001` | `docker compose -f docker-compose.prod.yml ps api`; if Up but unreachable, check the `ports:` mapping is `127.0.0.1:3001:3001` |
+| `tailscale funnel` says "permission denied" | The Mini doesn't have the `funnel` nodeAttr in your tailnet ACL | See Step 4 — add `nodeAttrs` rule + `--advertise-tags=tag:funnel` |
 | Postgres healthy but api says "ECONNREFUSED" | api started before postgres finished init on first boot | Wait — the depends_on healthcheck handles this; if it persists, check `docker logs medspa-postgres` |
