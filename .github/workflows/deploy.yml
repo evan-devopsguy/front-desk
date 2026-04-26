@@ -68,7 +68,7 @@ jobs:
           fi
 
       - name: Ensure base infra is up (postgres)
-        run: docker compose -f docker-compose.prod.yml up -d postgres
+        run: docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres
 
       - name: Build changed services
         if: steps.services.outputs.SERVICES != ''
@@ -76,7 +76,7 @@ jobs:
           SERVICES: ${{ steps.services.outputs.SERVICES }}
         run: |
           echo "Building: $SERVICES"
-          docker compose -f docker-compose.prod.yml build $SERVICES
+          docker compose --env-file .env.production -f docker-compose.prod.yml build $SERVICES
 
       - name: Run database migrations
         if: steps.services.outputs.SERVICES != ''
@@ -91,7 +91,7 @@ jobs:
         # require a two-phase deploy and are outside the scope of this
         # workflow — see docs/MAC_MINI_DEPLOY.md.
         run: |
-          docker compose -f docker-compose.prod.yml run --rm \
+          docker compose --env-file .env.production -f docker-compose.prod.yml run --rm \
             --entrypoint node api apps/api/dist/db/migrate.js
 
       - name: Recreate changed services
@@ -99,7 +99,7 @@ jobs:
         env:
           SERVICES: ${{ steps.services.outputs.SERVICES }}
         run: |
-          docker compose -f docker-compose.prod.yml up \
+          docker compose --env-file .env.production -f docker-compose.prod.yml up \
             --force-recreate --no-deps -d $SERVICES
 
       - name: Skip — no services changed
@@ -117,13 +117,13 @@ jobs:
             sleep 5
           done
           echo "api failed to become healthy within 5 minutes"
-          docker compose -f docker-compose.prod.yml ps
-          docker compose -f docker-compose.prod.yml logs --tail=80 api
+          docker compose --env-file .env.production -f docker-compose.prod.yml ps
+          docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=80 api
           exit 1
 
       - name: Dump logs on failure
         if: failure()
-        run: docker compose -f docker-compose.prod.yml logs --tail=120
+        run: docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=120
 
       - name: Prune old images
         run: docker image prune -f
