@@ -11,6 +11,7 @@ import { sendSms } from "../integrations/twilio.js";
 import { audit } from "./audit.js";
 import { logger } from "./logger.js";
 import { hashPhone } from "./pii.js";
+import { getSecretJson } from "./secrets.js";
 import type { Channel } from "@medspa/shared";
 
 export interface InboundTurnInput {
@@ -73,9 +74,13 @@ export async function handleInboundTurn(
         contactPhoneHash: phoneHash,
       });
 
+      const credentials = tenant.bookingCredentialsSecretArn
+        ? await getSecretJson(tenant.bookingCredentialsSecretArn)
+        : undefined;
       const adapter = createBookingAdapter(tenant.bookingAdapter, {
         tenantId: tenant.id,
         tenantConfig: tenant.config,
+        credentials,
       });
 
       return orchestrate({

@@ -15,7 +15,7 @@ const envSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
   BEDROCK_REASONING_MODEL_ID: z
     .string()
-    .default("us.anthropic.claude-sonnet-4-5-20250929-v1:0"),
+    .default("us.anthropic.claude-sonnet-4-6"),
   BEDROCK_CLASSIFIER_MODEL_ID: z
     .string()
     .default("us.anthropic.claude-haiku-4-5-20251001-v1:0"),

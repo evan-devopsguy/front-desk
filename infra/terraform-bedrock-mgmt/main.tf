@@ -11,8 +11,6 @@ data "aws_iam_policy_document" "bedrock_invoke" {
       "bedrock:InvokeModel",
       "bedrock:InvokeModelWithResponseStream",
     ]
-    # Cross-region inference profiles plus the foundation-model ARNs they
-    # fan out to. Bedrock requires both when calling a `us.*` profile.
     resources = [
       "arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-sonnet-4-6*",
       "arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-haiku-4-5-*",
