@@ -30,6 +30,17 @@ data "aws_iam_policy_document" "bedrock_invoke" {
       "arn:aws:secretsmanager:*:*:secret:front-desk/*/booking/*",
     ]
   }
+
+  statement {
+    sid    = "MarketplaceForBedrockAnthropic"
+    effect = "Allow"
+    actions = [
+      "aws-marketplace:ViewSubscriptions",
+      "aws-marketplace:Subscribe",
+      "aws-marketplace:Unsubscribe",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_policy" "bedrock_invoke" {

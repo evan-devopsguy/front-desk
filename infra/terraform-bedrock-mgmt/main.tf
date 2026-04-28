@@ -28,6 +28,23 @@ data "aws_iam_policy_document" "bedrock_invoke" {
       "arn:aws:secretsmanager:*:*:secret:front-desk/*/booking/*",
     ]
   }
+
+  # Older Anthropic models on Bedrock (e.g. Haiku 4.5 with the
+  # date-suffixed naming) are dispensed through AWS Marketplace and the
+  # runtime invoke path verifies the subscription on every call. Without
+  # these, InvokeModel returns AccessDeniedException citing missing
+  # Marketplace actions even though the org-level use-case form is filled.
+  # Newer models (Sonnet 4.6 with bare naming) don't require this.
+  statement {
+    sid    = "MarketplaceForBedrockAnthropic"
+    effect = "Allow"
+    actions = [
+      "aws-marketplace:ViewSubscriptions",
+      "aws-marketplace:Subscribe",
+      "aws-marketplace:Unsubscribe",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_policy" "bedrock_invoke" {
