@@ -116,7 +116,7 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
         urgency: { type: "string", enum: ["emergency", "complaint", "fyi"] },
         summary: {
           type: "string",
-          description: "One sentence, ≤160 chars. Enough for the owner to decide how fast to call back.",
+          description: "1-3 sentences, ≤320 chars. Concrete details (what's broken, address, how time-critical) so the owner can decide how fast to call back.",
         },
         callbackPhone: {
           type: "string",

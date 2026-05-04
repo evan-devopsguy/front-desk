@@ -2,7 +2,9 @@ import { z } from "zod";
 
 export const notifyOwnerInputSchema = z.object({
   urgency: z.enum(["emergency", "complaint", "fyi"]),
-  summary: z.string().min(1).max(160),
+  // 320 matches the per-tenant maxSmsChars budget; Twilio auto-segments
+  // longer bodies (~$0.008/segment) so multi-segment owner alerts are fine.
+  summary: z.string().min(1).max(320),
   callbackPhone: z.string().regex(/^\+[1-9]\d{7,14}$/),
   address: z.string().optional(),
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOwnerAlertBody } from "../owner-alert.js";
+import { buildOwnerAlertBody, notifyOwnerInputSchema } from "../owner-alert.js";
 
 describe("buildOwnerAlertBody", () => {
   describe("emergency urgency", () => {
@@ -82,6 +82,45 @@ describe("buildOwnerAlertBody", () => {
       urgency: "fyi",
       summary,
       callbackPhone: "+12025550001",
+    });
+    expect(body).toContain(summary);
+  });
+});
+
+describe("notifyOwnerInputSchema", () => {
+  const base = {
+    urgency: "emergency" as const,
+    callbackPhone: "+12025551234",
+  };
+
+  it("accepts a 320-char summary", () => {
+    const r = notifyOwnerInputSchema.safeParse({
+      ...base,
+      summary: "x".repeat(320),
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects a 321-char summary", () => {
+    const r = notifyOwnerInputSchema.safeParse({
+      ...base,
+      summary: "x".repeat(321),
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("preserves a long real-world transcript verbatim through the body", () => {
+    const summary =
+      "Caller from 909 area: garage door spring snapped at 7am, car physically trapped inside, she has work in 30 minutes — I tried the manual release but it's seized and the door is jammed about 6 inches off the ground, can someone come out as soon as possible please";
+    expect(summary.length).toBeGreaterThan(160);
+    expect(summary.length).toBeLessThanOrEqual(320);
+    const parsed = notifyOwnerInputSchema.parse({ ...base, summary });
+    const body = buildOwnerAlertBody({
+      tenantName: "Cooper Family Garage Doors",
+      urgency: parsed.urgency,
+      summary: parsed.summary,
+      callbackPhone: parsed.callbackPhone,
+      slaMinutes: 60,
     });
     expect(body).toContain(summary);
   });

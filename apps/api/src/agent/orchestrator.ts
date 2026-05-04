@@ -231,7 +231,7 @@ export async function orchestrate(
       "orchestrator: forcing notify_owner — agent did not call it before end_conversation",
     );
     const urgency = (intent === "emergency" ? "emergency" : "complaint") as "emergency" | "complaint";
-    const rawSummary = redactString(input.inboundText).slice(0, 160);
+    const rawSummary = redactString(input.inboundText).slice(0, 320);
     const body = buildOwnerAlertBody({
       tenantName: input.tenant.config.displayName,
       urgency,
