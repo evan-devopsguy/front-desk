@@ -13,6 +13,33 @@ describe("redactString", () => {
   it("redacts SSNs", () => {
     expect(redactString("SSN 123-45-6789")).toContain("[SSN]");
   });
+
+  it.each([
+    "+19097669426",
+    "(909) 766-9426",
+    "909-766-9426",
+    "909.766.9426",
+    "9097669426",
+    "1-909-766-9426",
+  ])("redacts phone format %s", (s) => {
+    expect(redactString(`called from ${s} earlier`)).toContain("[PHONE]");
+  });
+
+  it.each([
+    [
+      "AWS account ID",
+      "arn:aws:secretsmanager:us-east-1:271251179226:secret:front-desk/x",
+    ],
+    ["bare 12-digit account ID", "account 271251179226 has access"],
+    ["UUID", "tenant ba524539-24f9-4c86-a359-fd10a43eaf25 routed"],
+    [
+      "all-digit UUID block",
+      "id 12345678-1234-1234-1234-123456789012 ok",
+    ],
+    ["unix ms timestamp", "ts=1672531200000 closed"],
+  ])("does not redact %s", (_, s) => {
+    expect(redactString(s)).not.toContain("[PHONE]");
+  });
 });
 
 describe("redact (object)", () => {

@@ -9,12 +9,22 @@
  * logs. This redactor catches anything that slips through.
  */
 
-// Order matters: more specific patterns redact before greedy phone regex.
+// Order matters: more specific patterns redact before phone patterns.
+// Phone patterns use (?<!\w) and (?!\d) anchors so they don't bite into
+// identifiers (UUIDs, AWS account IDs, ARNs) that share digit/dash shapes.
 const PATTERNS: Array<{ label: string; re: RegExp }> = [
   { label: "[EMAIL]", re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g },
   { label: "[SSN]", re: /\b\d{3}-\d{2}-\d{4}\b/g },
   { label: "[DOB]", re: /\b(0?[1-9]|1[0-2])[/-](0?[1-9]|[12]\d|3[01])[/-](19|20)\d{2}\b/g },
-  { label: "[PHONE]", re: /\+?\d[\d\s().-]{7,}\d/g },
+  // E.164: +<10–15 digits>
+  { label: "[PHONE]", re: /(?<!\w)\+\d{10,15}(?!\d)/g },
+  // US formatted: optional +1, 3-3-4 with separator (space, dot, dash, parens)
+  {
+    label: "[PHONE]",
+    re: /(?<!\w)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)/g,
+  },
+  // Bare 10-digit NANP (area code + exchange both 2-9), optional leading 1
+  { label: "[PHONE]", re: /(?<!\w)1?[2-9]\d{2}[2-9]\d{6}(?!\d)/g },
 ];
 
 // snake_case entries mirror the camelCase ones for defense in depth against
