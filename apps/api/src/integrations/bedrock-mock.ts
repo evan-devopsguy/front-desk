@@ -331,8 +331,12 @@ function summarizeForPatient(kb: string): string {
 
 function guessServiceId(userText: string, system: string): string {
   const ids: string[] = [];
-  for (const match of system.matchAll(/id=([a-z0-9_-]+)/gi)) {
+  for (const match of system.matchAll(/\bid=([a-z0-9_-]+)/gi)) {
     if (match[1]) ids.push(match[1]);
+  }
+  // Garage-style: service_id "service_call"
+  for (const match of system.matchAll(/service_id\s+"([^"]+)"/gi)) {
+    if (match[1] && !ids.includes(match[1])) ids.push(match[1]);
   }
   for (const id of ids) {
     if (userText.includes(id.replace(/[_-]/g, " "))) return id;
