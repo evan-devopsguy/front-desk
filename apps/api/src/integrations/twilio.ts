@@ -43,9 +43,10 @@ export async function sendSms(args: {
   to: string;
   body: string;
 }): Promise<void> {
-  await client().messages.create({
-    from: args.from,
-    to: args.to,
-    body: args.body,
-  });
+  const messagingServiceSid = getConfig().TWILIO_MESSAGING_SERVICE_SID;
+  await client().messages.create(
+    messagingServiceSid
+      ? { messagingServiceSid, to: args.to, body: args.body }
+      : { from: args.from, to: args.to, body: args.body },
+  );
 }

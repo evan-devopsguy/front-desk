@@ -23,6 +23,7 @@ const envSchema = z.object({
 
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
   PUBLIC_BASE_URL: z.string().url().default("http://localhost:3001"),
 
   SECRETS_PREFIX: z.string().default("/medspa/dev"),
