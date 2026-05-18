@@ -50,7 +50,9 @@ jobs:
         run: pnpm install --frozen-lockfile=false
 
       - name: Apply schema
-        run: pnpm --filter @medspa/api run db:migrate
+        run: |
+          PGPASSWORD=medspa psql -h localhost -U medspa -d medspa -f apps/api/src/db/schema.sql
+          pnpm --filter @medspa/api run db:migrate
 
       - name: Typecheck
         run: pnpm typecheck
