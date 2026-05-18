@@ -45,6 +45,16 @@ pnpm eval                    # exits 1 on any regression
 ```
 The harness reseeds tenants each run and resets the mock booking adapter between scenarios.
 
+## Claude Code automations
+
+**.env protection** — A `PreToolUse` hook blocks any attempt to edit `.env` or `.env.*` (except `.example` files). Edit those files manually outside Claude.
+
+**TypeScript typecheck** — A `Stop` hook runs `pnpm --filter @medspa/api typecheck` once at the end of each response. Errors appear in the terminal; fix before continuing.
+
+**Security reviewer** — A subagent in `.claude/agents/security-reviewer.md` checks the five non-negotiables above. Invoke it on any diff that touches `agent/`, `db/`, `routes/`, or `integrations/` before merging.
+
+**context7** — Live SDK docs are available via the context7 MCP. Use it when working with Bedrock, Twilio, Fastify, or pg to avoid stale training data.
+
 ## Style nits the reviewer will flag
 - No `console.log`. Use `logger.info/warn/error`.
 - No `process.env.FOO`. Go through `getConfig()`.
