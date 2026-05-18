@@ -96,7 +96,6 @@ export async function orchestrate(
       resourceId: input.conversationId,
       metadata: { reason: intent, auto: true },
     });
-    await input.notifyOwner(summary, intent).catch(() => {});
     const reply = `Thanks for reaching out! For anything clinical, I'll have a ${input.tenant.name} team member follow up directly so you get the right answer. Talk soon.`;
     await insertMessage(input.client, {
       tenantId: input.tenant.id,

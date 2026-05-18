@@ -249,8 +249,17 @@ function classify(t: string): string {
     return "clinical";
   if (/\b(refund|swollen|allergic reaction|rash|hurt|pain|infection|bruise|worried|reacting)/.test(t))
     return "complaint";
+  // Garage-specific complaint: prior tech visit still not resolved
+  if (/\b(came out|still broken|still not fixed|your tech|your technician|frustrated|upset about|prior visit)\b/.test(t))
+    return "complaint";
+  // Spam: SEO/agency outreach + solar/energy/utility pitches
   if (/\b(seo|ranking|partnership|lead gen|marketing agency|seograph|outreach)\b/.test(t))
     return "spam";
+  if (/solar|energy bill|energy savings|cut your energy|reduce your bill/.test(t))
+    return "spam";
+  // Pricing questions are FAQ even when they name a repair type (e.g. "broken spring fix cost")
+  if (/\b(how much|what.*cost|what.*price|cost.*fix|fix.*cost|price.*for|fee|estimate|quote)\b/.test(t))
+    return "faq";
   // Garage-doors emergency: door stuck, car trapped, broken spring, safety hazard
   if (/\b(trapped|stuck.*door|door.*stuck|broken spring|spring.*broke|won't close|won't open|can't get.*car|door.*won't|security hazard|stuck open|stuck closed)\b/.test(t))
     return "emergency";
